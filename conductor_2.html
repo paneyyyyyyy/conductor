@@ -1,0 +1,1247 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>指揮台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#E9EDF4; --ink:#1B2238; --muted:#56607C; --panel:rgba(255,255,255,.86); --accent:#C2410C; --good:#1E7A46;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#111A2E; --ink:#F2EBDD; --muted:#9AA3BD; --panel:rgba(17,26,46,.86); --accent:#FFD27A; --good:#7CD69E;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Noto Sans TC",system-ui,sans-serif;overflow:hidden}
+.cam{position:fixed;inset:0;z-index:0;overflow:hidden;background:#000;display:none}
+.cam video,.cam canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+#three,#stage{position:fixed;inset:0;width:100%;height:100%;display:block}
+#three{z-index:1} #stage{z-index:2}
+.topleft{position:fixed;top:16px;left:16px;z-index:3;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.hud{pointer-events:none;background:var(--panel);padding:12px 18px;border-radius:12px}
+.tempo{font-family:"Noto Serif TC",serif;font-weight:900;font-size:clamp(44px,7vw,80px);line-height:1}
+.tempo small{font-family:"Noto Sans TC",sans-serif;font-weight:500;font-size:15px;color:var(--muted);margin-left:8px}
+.bar-dots{display:flex;gap:6px;margin-top:8px}
+.bar-dots i{font-style:normal;min-width:40px;height:26px;padding:0 6px;border-radius:13px;display:flex;gap:2px;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+  border:2px solid var(--muted);color:var(--muted);transition:background .08s}
+.bar-dots i.on{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.status{margin-top:6px;font-size:14px;color:var(--muted);min-height:1.4em;max-width:15em;line-height:1.5}
+.help{position:fixed;left:50%;transform:translateX(-50%);bottom:50px;text-align:center;font-size:15px;color:var(--ink);
+  background:var(--panel);padding:8px 16px;border-radius:999px;pointer-events:none;z-index:3;max-width:calc(100% - 340px)}
+.help:empty{display:none}
+.tools{position:fixed;right:16px;bottom:50px;z-index:3;display:none;flex-direction:column;gap:8px}
+.tools button{font-size:14px;padding:8px 14px;background:var(--panel)}
+.ready{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;background:var(--panel);border-radius:16px;
+  padding:20px 28px;text-align:center;display:none;pointer-events:none;width:min(380px,90vw);color:var(--ink)}
+.ready b{display:block;font-size:24px;margin:8px 0 6px}
+.ready p{margin:0 0 14px;color:var(--muted);line-height:1.6}
+.ready .bar{height:6px;background:rgba(127,127,127,.3);border-radius:3px;overflow:hidden}
+.ready .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .1s}
+.legend{display:none;flex-direction:column;gap:2px;background:var(--panel);border-radius:12px;padding:6px;min-width:100%}
+.lg-row{display:flex;align-items:center;gap:8px;border:0;border-radius:8px;padding:3px 8px 3px 4px;background:transparent;text-align:left;font-size:12px;line-height:1.25;cursor:default}
+.lg-icon{font-style:normal;font-size:20px;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;border:2px solid;background:rgba(255,255,255,.6)}
+.lg-row b{display:block;font-size:14px}
+.lg-row small{display:block;color:var(--muted);font-size:11px}
+.lg-row.on{background:var(--ink);color:var(--bg)}
+.lg-row.on small{color:var(--bg);opacity:.8}
+.timebar{position:fixed;left:0;right:0;bottom:0;height:38px;z-index:3;background:var(--panel);display:none;align-items:center;gap:14px;padding:0 16px}
+.tb-title{font-size:14px;font-weight:700;white-space:nowrap}
+.tb-track{position:relative;flex:1;height:10px;border-radius:5px;background:rgba(127,127,127,.28);overflow:hidden}
+.tb-mark{position:absolute;top:0;bottom:0;opacity:.55}
+.tb-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--ink);opacity:.75}
+.tb-time{font-size:14px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.timebar button{font-size:13px;padding:4px 12px;background:transparent}
+
+.result{position:fixed;inset:0;display:none;place-items:center;z-index:4;background:rgba(0,0,0,.35);padding:20px}
+.result .card{background:var(--bg);border-radius:16px;padding:28px 34px;max-width:26em;text-align:center}
+.result h2{margin:0;font-size:22px}
+.res-score{font-family:"Noto Serif TC",serif;font-weight:900;font-size:64px;line-height:1.2;margin-top:8px}
+.res-stars{font-size:32px;color:var(--accent);letter-spacing:.1em;min-height:1em}
+.res-detail{color:var(--muted);margin:8px 0 18px}
+.result .buttons{justify-content:center;margin-top:0}
+.start{position:fixed;inset:0;display:grid;place-items:start center;background:var(--bg);padding:32px 24px;z-index:4;overflow:auto}
+.start .box{max-width:44em;width:100%}
+.start h1{font-family:"Noto Serif TC",serif;font-weight:900;font-size:clamp(44px,8vw,72px);margin:0;letter-spacing:.04em}
+.tabs{display:flex;gap:8px;margin:14px 0 4px}
+.tabs button{font-size:16px;padding:8px 20px;background:transparent}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+.label{font-size:14px;color:var(--muted);margin:20px 0 8px}
+.songs{display:grid;grid-template-columns:repeat(auto-fit,minmax(13em,1fr));gap:10px}
+.songs button{border-radius:12px;text-align:left;padding:12px 14px;font-size:17px;background:transparent}
+.songs small{display:block;font-size:13px;opacity:.75;margin-top:2px}
+.modes{display:flex;gap:10px;flex-wrap:wrap}
+.modes button{font-size:16px;padding:10px 18px;background:transparent;text-align:left}
+.modes small{display:block;font-size:13px;opacity:.75}
+.songs button[aria-pressed="true"],.modes button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.buttons{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+button{font:inherit;font-size:17px;padding:12px 22px;border-radius:999px;cursor:pointer;border:1.5px solid var(--ink);color:var(--ink)}
+button.primary{background:var(--ink);color:var(--bg)}
+button.secondary{background:transparent}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+button:disabled{opacity:.5;cursor:wait}
+.msg{margin-top:16px;color:var(--accent);min-height:1.4em}
+.learn h2{font-size:20px;margin:26px 0 8px}
+.learn p,.learn li{line-height:1.85}
+.learn ol{padding-left:1.4em;margin:6px 0}
+.pats{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0}
+.pat{margin:0;flex:1;min-width:220px;max-width:300px;border:1.5px solid rgba(127,127,127,.35);border-radius:14px;padding:10px 10px 6px;text-align:center}
+.pat svg{width:100%;height:auto;display:block}
+.pat figcaption{font-weight:700;margin-top:2px}
+.pat .plane{stroke:var(--muted);stroke-width:1.5;stroke-dasharray:4 5}
+.pat .route{fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;opacity:.75}
+.pat .ict{fill:var(--bg);stroke:var(--accent);stroke-width:3}
+.pat .num{font-size:16px;font-weight:700;fill:var(--accent)}
+.pat .dot{fill:var(--accent)}
+.note{background:rgba(127,127,127,.12);border-radius:10px;padding:10px 14px;margin:10px 0}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div class="cam" id="cam"><video id="video" playsinline muted></video><canvas id="camCanvas"></canvas></div>
+<canvas id="three"></canvas>
+<canvas id="stage"></canvas>
+<div class="topleft"><div class="hud"><div class="tempo"><span id="bpm">--</span><small>每分鐘拍數</small></div><div class="bar-dots" id="barDots"></div><div class="status" id="status"></div></div><div class="legend" id="legend"></div></div>
+<div class="ready" id="ready">
+  <svg width="70" height="40" viewBox="0 0 70 40" aria-hidden="true"><rect x="4" y="6" width="26" height="28" rx="9" fill="currentColor"/><rect x="40" y="6" width="26" height="28" rx="9" fill="currentColor"/></svg>
+  <b id="readyTitle">請雙手握拳，舉在胸前</b>
+  <p id="readyText">握住三秒鐘，程式就會開始聽你的預備拍</p>
+  <div class="bar"><i id="readyBar"></i></div>
+</div>
+<div class="help" id="help"></div>
+<div class="tools" id="tools"><button id="swap">左右手對調</button></div>
+<div class="timebar" id="timebar">
+  <span class="tb-title" id="tbTitle"></span>
+  <div class="tb-track"><div class="tb-fill" id="tbFill"></div></div>
+  <span class="tb-time" id="tbTime">0:00</span>
+  <button id="toMenu">選單</button>
+</div>
+<div class="result" id="result"><div class="card">
+  <h2 id="resTitle"></h2>
+  <div class="res-score" id="resScore"></div>
+  <div class="res-stars" id="resStars"></div>
+  <div class="res-detail" id="resDetail"></div>
+  <div class="buttons"><button class="primary" id="again">再玩一次</button><button class="secondary" id="menu">回到選單</button></div>
+</div></div>
+
+<div class="start" id="start">
+  <div class="box">
+    <h1>指揮台</h1>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" data-tab="tabPlay">開始指揮</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="tabLearn">指揮教學</button>
+    </div>
+
+    <section class="tabpanel" id="tabPlay">
+      <div class="label">選一首曲子</div>
+      <div class="songs" id="songs"></div>
+      <div class="buttons">
+        <button class="primary" id="btnCam">開啟鏡頭開始指揮</button>
+      </div>
+      <div class="msg" id="msg"></div>
+    </section>
+
+    <section class="tabpanel learn" id="tabLearn" hidden>
+      <h2>準備姿勢</h2>
+      <p>站或坐在鏡頭前，讓肩膀和兩隻手臂都入鏡。雙手舉到胸前，手肘放鬆。想像胸前有一張看不見的桌子，每一拍都輕輕「拍」在桌面上，然後彈起來。拍到桌面的那一刻，就是這一拍的位置，指揮叫它「拍點」。</p>
+
+      <h2>拍子圖形</h2>
+      <p>每一首曲子都有固定的拍子數。畫面左上角的圓圈會顯示現在是第幾拍，選單上也標了每首曲子是幾拍子。下面是右手的畫法，橘色圓圈是拍點，小圓點示範手怎麼移動：</p>
+      <div class="pats"><figure class="pat"><svg viewBox="0 0 240 200" role="img" aria-label="四拍子的右手指揮圖形">
+<line x1="25" y1="160" x2="215" y2="160" class="plane"/><path d="M120,20 L120,160 Q112,100 85,105 Q58,110 55,160 Q75,85 130,95 Q185,105 190,160 Q182,110 160,112 Q145,114 148,132 Q146,70 120,20" class="route"/><circle cx="120" cy="160" r="9" class="ict"/><text x="115" y="188" class="num">1</text><circle cx="55" cy="160" r="9" class="ict"/><text x="50" y="188" class="num">2</text><circle cx="190" cy="160" r="9" class="ict"/><text x="185" y="188" class="num">3</text><circle cx="148" cy="132" r="9" class="ict"/><text x="162" y="126" class="num">4</text>
+<circle r="8" class="dot"><animateMotion dur="2.6s" repeatCount="indefinite" path="M120,20 L120,160 Q112,100 85,105 Q58,110 55,160 Q75,85 130,95 Q185,105 190,160 Q182,110 160,112 Q145,114 148,132 Q146,70 120,20"/></circle></svg><figcaption>四拍子</figcaption></figure><figure class="pat"><svg viewBox="0 0 240 200" role="img" aria-label="三拍子的右手指揮圖形">
+<line x1="25" y1="160" x2="215" y2="160" class="plane"/><path d="M120,20 L120,160 Q128,100 160,105 Q190,110 190,160 Q182,110 160,112 Q145,114 148,132 Q146,70 120,20" class="route"/><circle cx="120" cy="160" r="9" class="ict"/><text x="115" y="188" class="num">1</text><circle cx="190" cy="160" r="9" class="ict"/><text x="185" y="188" class="num">2</text><circle cx="148" cy="132" r="9" class="ict"/><text x="162" y="126" class="num">3</text>
+<circle r="8" class="dot"><animateMotion dur="2s" repeatCount="indefinite" path="M120,20 L120,160 Q128,100 160,105 Q190,110 190,160 Q182,110 160,112 Q145,114 148,132 Q146,70 120,20"/></circle></svg><figcaption>三拍子</figcaption></figure></div>
+      <ol>
+        <li><b>四拍子：</b>1 往下、2 往內（右手往左）、3 往外（往右）、4 往上回到起點。</li>
+        <li><b>三拍子：</b>1 往下、2 往外（往右）、3 往上回到起點。</li>
+      </ol>
+      <p>左手做一樣的圖形，但左右相反，像照鏡子一樣。程式只看上下：每一次往下揮到底、再往上彈起來，就算一拍，往哪個方向揮都可以。左上角的拍子圓點旁邊有箭頭，是正式指揮圖形的方向，給你參考。</p>
+      <p>第一拍要揮得最大、最清楚，程式會靠它認出「新的一小節開始了」。</p>
+
+      <h2>預備拍：讓樂團開始</h2>
+      <p>每首曲子開始前，畫面中間會提示你先雙手握拳、舉在胸前，握住三秒鐘。這是告訴程式「我準備好了」，在這之前怎麼揮都不會開始。</p>
+      <p>真正的指揮不會一下子就讓樂團開始，而是先給預備拍，告訴樂團速度和開始的時間。在這個遊戲裡，握拳三秒後，照拍子圖形從第 1 拍開始「空揮一小節」（四拍子揮 4 下、三拍子揮 3 下），左上角的拍子圓點會跟著你一拍一拍亮起來。揮滿一小節，樂團就會在下一小節的第一拍進來，速度就是你空揮的速度。這樣你的第一拍和音樂的第一拍一定會對齊。</p>
+
+      <h2>速度和大小聲</h2>
+      <p>揮得快，音樂就快；揮得慢，音樂就慢。揮的幅度大，樂團就大聲；幅度小，樂團就小聲。想要漸強，就讓圖形一拍一拍慢慢變大。揮得很小時，第一拍還是要清楚往下，程式靠它認出小節；就算有幾拍小到沒抓到，樂團也會照原本的速度繼續演奏，不會突然停下來。</p>
+
+      <h2>單獨控制某一組樂器</h2>
+      <p>樂團分成五組，每一組有一個左手手勢，畫面左上角的速度面板下面會列出來：食指朝上 ☝️ 是小提琴、比 YA ✌️ 是大提琴、比讚 👍 是木管（長笛和單簧管）、🤟（大拇指、食指、小指伸出）是銅管（法國號、小號、長號）、大拇指朝下 👎 是定音鼓。</p>
+      <p>左手比出手勢、手掌朝向鏡頭，停一下下，列表裡那一行就會亮起來，代表選中了。這時用右手繼續打拍子：右手揮的幅度只控制這組樂器的大小聲，揮的速度仍然控制整個樂團的速度。左手放開手勢，就回到雙手指揮全體。</p>
+
+      <h2>收音</h2>
+      <p>雙手同時握緊拳頭並停住不動，樂團就會停下來。只是手指自然彎起來、或手還在揮，都不會停。再空揮一小節，就會從下一小節繼續。</p>
+
+      <div class="note">小提醒：光線充足、背景單純、衣服和背景顏色不同，辨識會比較準。</div>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const map = (v,a,b,c,d) => c + (d-c) * clamp((v-a)/(b-a),0,1);
+const median = a => { const s=[...a].sort((x,y)=>x-y); return s[Math.floor(s.length/2)]; };
+const fmt = s => { s = Math.max(0, Math.round(s)); return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; };
+
+/* ---------- 卡住紀錄 ---------- */
+const MARK_KEY = 'conductor-last-step';
+const STEP_NAME = {pose:'姿勢辨識', hands:'手部辨識', render:'畫 3D 樂團', overlay:'畫名稱和軌跡', schedule:'排音符',
+                   update:'更新速度和音量', animate:'樂手動作', idle:'遊戲程式之外（瀏覽器、顯示卡或聲音處理）'};
+let markOK = true;
+function mark(step){ if (!markOK) return; try { localStorage.setItem(MARK_KEY, step); } catch { markOK = false; } }
+
+/* ---------- 樂團 ---------- */
+const SECTIONS = [
+  {name:'小提琴', color:'#C8553D', rows:[{pos:[-.64,-.40], dist:8.5, kinds:['violin','violin','violin']}]},
+  {name:'大提琴', color:'#A44A3F', rows:[{pos:[ .62,-.40], dist:8.5, kinds:['cello','cello']}]},
+  {name:'木管',   color:'#3F8F6E', rows:[{pos:[-.30, .38], dist:14, gap:1.25,  kinds:['flute','flute','clarinet','clarinet']}]},
+  {name:'銅管',   color:'#3E6FB0', rows:[{pos:[ .34, .38], dist:14, gap:1.35,  kinds:['horn','horn','trumpet','trombone']}]},
+  {name:'定音鼓', color:'#7E57C2', rows:[{pos:[ 0,   .80], dist:16,  kinds:['timpani']}]},
+];
+/* 編曲裡有 8 個聲部，分給 5 組樂器：
+   小提琴 = 主旋律 + 內聲部；大提琴 = 低音；木管 = 長笛 + 單簧管；銅管 = 法國號 + 小號長號；定音鼓 */
+const PART_SEC = [0, 0, 1, 2, 2, 3, 3, 4];
+const NS = SECTIONS.length, TIMPANI = 4;
+
+/* ---------- 曲目（全部是公版古典音樂） ---------- */
+const ODE_A = [['F#5',1],['F#5',1],['G5',1],['A5',1],['A5',1],['G5',1],['F#5',1],['E5',1],['D5',1],['D5',1],['E5',1],['F#5',1]];
+const ODE_E1 = [['F#5',1.5],['E5',.5],['E5',2]], ODE_E2 = [['E5',1.5],['D5',.5],['D5',2]];
+const ODE_B = [['E5',1],['E5',1],['F#5',1],['D5',1],['E5',1],['F#5',.5],['G5',.5],['F#5',1],['D5',1],
+               ['E5',1],['F#5',.5],['G5',.5],['F#5',1],['E5',1],['D5',1],['E5',1],['A4',2]];
+const halves = s => s.split(' ').map(c => [c,2]);
+const bars = (s, n) => s.split(' ').map(c => [c,n]);
+const CANON_1 = [['F#5',2],['E5',2],['D5',2],['C#5',2],['B4',2],['A4',2],['B4',2],['C#5',2]];
+const CANON_2 = 'D5 F#5 A5 G5 F#5 D5 F#5 E5 D5 B4 D5 A4 G4 B4 A4 G4'.split(' ').map(n => [n,1]);
+const CANON_CH = halves('D A Bm F#m G D G A');
+const LARGO_1 = [['E5',1.5],['G5',.5],['G5',2],['E5',1.5],['D5',.5],['C5',2],['D5',1],['E5',1],['G5',1],['E5',1],['D5',4]];
+const LARGO_2 = [['E5',1.5],['G5',.5],['G5',2],['E5',1.5],['D5',.5],['C5',2],['D5',1],['E5',1],['D5',1],['C5',1],['C5',4]];
+const LARGO_CH = [['C',4],['Am',4],['G',4],['G',4],['C',4],['Am',4],['G',2],['C',2],['C',4]];
+const q = s => s.split(' ').map(n => n.endsWith('_') ? [n.slice(0,-1),2] : [n,1]);
+const TW_A = q('C5 C5 G5 G5 A5 A5 G5_ F5 F5 E5 E5 D5 D5 C5_');
+const TW_B = q('G5 G5 F5 F5 E5 E5 D5_ G5 G5 F5 F5 E5 E5 D5_');
+const TW_ACH = [['C',4],['F',2],['C',2],['F',2],['C',2],['G',2],['C',2]];
+const TW_BCH = halves('C G7 C G C G7 C G');
+const e = s => s.split(' ').map(n => n.endsWith('.') ? [n.slice(0,-1),3] : n.endsWith('-') ? [n.slice(0,-1),1] : [n,.5]);
+const MIN_1 = e('D5- G4 A4 B4 C5 D5- G4- G4- E5- C5 D5 E5 F#5 G5- G4- G4- C5- D5 C5 B4 A4 B4- C5 B4 A4 G4');
+const MIN_E1 = e('F#4- G4 A4 B4 G4 A4.'), MIN_E2 = e('A4- B4 A4 G4 F#4 G4.');
+
+const SONGS = [
+  {title:'歡樂頌', composer:'貝多芬《第九號交響曲》', bpm:100, key:'D', meter:4,
+   melody:[...ODE_A,...ODE_E1,...ODE_A,...ODE_E2,...ODE_B,...ODE_A,...ODE_E2],
+   chords:halves('D D A A D D D A D D A A D D A D A A A D A A D A D D A A D D A D')},
+  {title:'卡農', composer:'帕海貝爾', bpm:66, key:'D', meter:4,
+   melody:[...CANON_1,...CANON_2,...CANON_2,...CANON_1,['D5',4]],
+   chords:[...CANON_CH,...CANON_CH,...CANON_CH,...CANON_CH,['D',4]]},
+  {title:'念故鄉', composer:'德弗札克《新世界交響曲》第二樂章', bpm:56, key:'C', meter:4,
+   melody:[...LARGO_1,...LARGO_2,...LARGO_1,...LARGO_2], chords:[...LARGO_CH,...LARGO_CH]},
+  {title:'小星星', composer:'莫札特《小星星變奏曲》主題', bpm:96, key:'C', meter:4,
+   melody:[...TW_A,...TW_B,...TW_A,...TW_A,...TW_B,...TW_A],
+   chords:[...TW_ACH,...TW_BCH,...TW_ACH,...TW_ACH,...TW_BCH,...TW_ACH]},
+  {title:'小步舞曲', composer:'G 大調小步舞曲（佩措爾德）', bpm:108, key:'G', meter:3,
+   melody:[...MIN_1,...MIN_E1,...MIN_1,...MIN_E2], chords:bars('G G C G C G D D G G C G C G D G', 3)},
+];
+
+/* ---------- 自動編曲 ---------- */
+const PC = {C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11};
+const toMidi = n => Tone.Frequency(n).toMidi(), toNote = m => Tone.Frequency(m,'midi').toNote();
+const shift = (n,s) => toNote(toMidi(n)+s);
+function chordPCs(name){
+  const m = name.match(/^([A-G][#b]?)(m)?(7)?$/), r = PC[m[1]];
+  const iv = m[2] ? [0,3,7] : [0,4,7]; if (m[3]) iv.push(10);
+  return iv.map(i => (r+i)%12);
+}
+function near(pc, target){ let d = ((pc - target) % 12 + 12) % 12; if (d > 6) d -= 12; return toNote(target + d); }
+function chordAt(song, beat){ let t = 0; for (const [c,d] of song.chords){ if (beat < t+d) return c; t += d; } return song.chords.at(-1)[0]; }
+
+function arrange(song){
+  const ev = [], add = (sec,b,d,notes,vel) => ev.push({beat:b, dur:d, notes, sec, vel});
+  const M = song.meter, total = song.melody.reduce((s,[,d]) => s+d, 0);
+  const key = PC[song.key], dom = (key+7)%12;
+  let t = 0;
+  for (const [n,d] of song.melody){
+    add(0, t, d*.92, n, .8);
+    if (t >= total/2)   add(3, t, d*.9, shift(n,12), .42);
+    if (t >= total*.75) add(6, t, d*.9, shift(n,-12), .45);
+    t += d;
+  }
+  t = 0;
+  for (const [name,d] of song.chords){
+    const [R,T,F] = chordPCs(name);
+    if (M === 3){                                         // 圓舞曲伴奏：低音在第一拍，和弦在第二、三拍
+      for (let k=0;k<d;k++){
+        const bt = t+k;
+        if (bt % 3 === 0) add(2, bt, .9, [near(R,40), near(R,52)], .6);
+        else { add(1, bt, .45, near(T,64), .36); add(5, bt, .45, [near(R,55), near(F,62)], .3); }
+      }
+    } else {
+      add(1, t, d*.95, near(T,64), .42);
+      add(2, t, Math.min(d,2)*.9, [near(R,40), near(R,52)], .6);
+      if (d >= 4) add(2, t+2, 1.8, [near(F,45), near(F,55)], .5);
+      add(5, t, d*.95, [near(R,55), near(F,62)], .35);
+    }
+    const arp = [R,T,F,T];
+    for (let k=0; k<d*2; k++) add(4, t+k*.5, .45, near(arp[k%4], 64), .3);
+    t += d;
+  }
+  for (let b=0; b<total-M; b+=M){
+    const [R,T,F] = chordPCs(chordAt(song,b));
+    if (b < total*.75) add(6, b, .5, [near(R,48), near(T,57), near(F,64)], .45);
+    add(7, b, .5, near(R === dom ? dom : key, 47), .75);
+  }
+  for (let k=0; k<8; k++) add(7, total-M+k*.25, .2, near(key,47), .3+k*.06);
+  add(6, total-M, M-1, [near(key,48), near((key+4)%12,57), near(key,64)], .5);
+  ev.sort((a,b) => a.beat - b.beat);
+  return {events:ev, total};
+}
+
+/* ---------- 音色 ---------- */
+const SYN = [
+  {o:{type:'sawtooth'}, lp:3200, vol:-11}, {o:{type:'sawtooth'}, lp:2200, vol:-14}, {o:{type:'sawtooth'}, lp:900, vol:-9},
+  {o:{type:'sine'}, lp:6000, vol:-13, a:.05}, {o:{type:'square'}, lp:1500, vol:-24, a:.03, r:.2},
+  {o:{type:'sawtooth'}, lp:850, vol:-16, a:.08}, {o:{type:'sawtooth'}, lp:1800, vol:-19, a:.03}, null,
+];
+
+const state = {
+  mode:'free', input:null, song:SONGS[0], playing:false, finished:false, bpm:90, beats:[], lastBeat:-1e9, slowed:false,
+  levels:Array(NS).fill(1), selected:-1, single:-1, master:.8, pulse:0,
+  trails:{R:[], L:[]}, cursors:{R:null, L:null}, gCand:-1, gCount:0, gSeen:0, armed:false, armSince:0, armLast:0,
+  fistSince:0, swapHands:false, camLatMs:70, lastK:0, barBeat:0, offDown:0, errs:[], early:[], lastDrop:0, dirHist:[], resync:false, hist:[], moves:[], posAmp:[], bigDrop:.05, drops:[], lastDownT:null, elapsed:0, pose:null,
+};
+const SS = SECTIONS.map(() => ({act:0, bowDir:1, hitSide:0, slide:0}));
+let synths, secGain, master, pauseTimer = null, audioReady = false;
+let events = [], total = 64;
+const setStatus = s => { $('status').textContent = s; };
+
+async function setupAudio(){
+  Tone.context.lookAhead = 0.05;
+  await Tone.start();
+  const limiter = new Tone.Limiter(-1).toDestination();
+  const reverb = new Tone.Reverb({decay:2.8, wet:.28}).connect(limiter);
+  await reverb.generate();
+  master = new Tone.Gain(0).connect(reverb);
+  secGain = SECTIONS.map(() => new Tone.Gain(1).connect(master));
+  synths = SYN.map((sp,i) => {
+    if (!sp){
+      const m = new Tone.MembraneSynth({pitchDecay:.04, octaves:1.5, envelope:{attack:.002, decay:.7, sustain:0, release:.6}}).connect(secGain[PART_SEC[i]]);
+      m.volume.value = -6; return m;
+    }
+    const p = new Tone.PolySynth(Tone.Synth, {oscillator:sp.o, envelope:{attack:sp.a ?? .06, decay:.15, sustain:.75, release:sp.r ?? .35}})
+      .chain(new Tone.Filter(sp.lp,'lowpass'), secGain[PART_SEC[i]]);
+    p.volume.value = sp.vol; p.maxPolyphony = 8; return p;
+  });
+  setInterval(scheduleTick, 25);
+  audioReady = true;
+}
+
+/* ---------- 排程器 ---------- */
+const LOOKAHEAD = .15;
+const sched = {running:false, beat:0, time:0, rate:1.5, endTime:Infinity, endBeat:0, nextRate:1.5, idx:0};
+const audioNow = () => Tone.context.currentTime;
+function beatAt(t){
+  if (t <= sched.endTime) return sched.beat + (t - sched.time) * sched.rate;
+  return sched.endBeat + (t - sched.endTime) * sched.nextRate;
+}
+function timeOfBeat(b){
+  if (sched.endTime === Infinity || b <= sched.endBeat) return sched.time + (b - sched.beat) / sched.rate;
+  return sched.endTime + (b - sched.endBeat) / sched.nextRate;
+}
+function settle(now){
+  if (now > sched.endTime){ sched.beat = sched.endBeat; sched.time = sched.endTime; sched.rate = sched.nextRate; sched.endTime = Infinity; }
+}
+function anchor(t, beat, rate){ sched.time = t; sched.beat = beat; sched.rate = sched.nextRate = rate; sched.endTime = Infinity; }
+function setTempo(bpm){
+  state.bpm = clamp(bpm, 30, 200);
+  if (sched.running){ const t = audioNow(); settle(t); anchor(t, beatAt(t), state.bpm/60); }
+}
+const outLat = () => { const c = Tone.context.rawContext; return ((c.outputLatency || 0) + (c.baseLatency || 0)) || .02; };
+const ictusAudio = tBeat => audioNow() - (performance.now() - tBeat)/1000 - state.camLatMs/1000 - outLat();
+const meter = () => state.song.meter;
+function startAligned(bpm, tBeat){
+  state.bpm = bpm;
+  const M = meter(), pos = sched.running ? beatAt(audioNow()) : sched.beat;
+  state.lastK = Math.ceil((pos - 1e-6) / M) * M - 1;            // 剛剛那一下 = 小節最後一拍；音樂從下一小節的第一拍開始（中途停下再繼續，也從下一小節開頭接）
+  state.barBeat = ((state.lastK % M) + M) % M + 1;
+  state.errs = [];
+  anchor(ictusAudio(tBeat), state.lastK, bpm/60);
+  sched.running = true;
+}
+/* 跟拍：每揮一下，就比較「你的手」和「音樂預計的拍點」差多少，然後同時修正兩件事：
+   1. 拍點位置：這一拍往你的手靠過去一部分（ALPHA）
+   2. 速度：照差距調整每拍的長度（BETA）
+   這種修正方式（alpha-beta 追蹤）反應快、又不容易衝過頭。 */
+const ALPHA = .6, BETA = .25;
+function followBeat(target, tBeat, steps, conf = 1){
+  const now = audioNow(), tIct = ictusAudio(tBeat), M = meter();
+  settle(now);
+  const b = beatAt(tIct);
+  let k = state.lastK + steps;                                    // 照你數的拍子走
+  if (Math.abs(b - k) > 1.5) k = Math.round(b);                   // 差太多（例如停很久）才直接跳過去
+  let P = 60 / state.bpm;                                         // 目前每拍幾秒
+  if (state.barBeat === 1){
+    k = Math.round(k / M) * M;                                    // 第一拍一定對到小節開頭
+    if (state.resync && Math.abs(b - k) > .45){                   // 剛剛確認數錯了小節位置：把音樂直接移到這一小節的開頭（只在確認數錯時才做）
+      state.resync = false; state.lastK = k; state.errs = [];
+      anchor(tIct, k, 1/P);
+      return;
+    }
+    state.resync = false;
+  }
+  state.lastK = k;
+  let tPred = timeOfBeat(k);                                      // 音樂原本預計這一拍在什麼時候
+  if (state.barBeat !== 1 && Math.abs(tIct - tPred) > P*.4){                             // 差將近半拍：多半是數拍數錯了一拍（多算或少算），改對到最近的那一拍，而不是去改速度
+    const k2 = Math.round(b);
+    if (k2 !== k && Math.abs(b - k2) < .3){ k = k2; state.lastK = k; tPred = timeOfBeat(k); state.errs = []; }
+  }
+  const e = clamp(tIct - tPred, -P*.5, P*.5);                     // 正 = 手比音樂晚（音樂太快）
+  state.phaseErr = -e / P;
+  // 連續兩拍都往同一邊偏很多：你真的在改速度，修正力道加大
+  state.errs.push(e); if (state.errs.length > 3) state.errs.shift();
+  const strong = state.errs.length === 3 && state.errs.every(v => Math.sign(v) === Math.sign(e) && Math.abs(v) > P*.06);
+  // 平常每拍速度最多改 8%（單一拍再怪也不會讓樂團暴衝）；連續三拍都往同一邊偏，代表你真的在改速度，才放寬到 20%
+  const lim = strong ? .2 : .08;
+  P = clamp(P + (strong ? BETA*1.6 : BETA) * conf * e, P*(1-lim), P*(1+lim));
+  state.bpm = clamp(60 / P, 30, 200);
+  const anchorT = tPred + ALPHA * conf * e;                       // 這一拍「應該」在的時間
+  const nextT = anchorT + P;                                      // 下一拍
+  const bNow = beatAt(now);
+  if (nextT - now < .06){ anchor(now, bNow, 1/P); return; }
+  const r = clamp((k + 1 - bNow) / (nextT - now), .7/P, 1.4/P);
+  sched.beat = bNow; sched.time = now; sched.rate = r;
+  sched.endTime = nextT; sched.endBeat = bNow + r*(nextT - now); sched.nextRate = 1/P;
+}
+function stopScheduler(){
+  if (!sched.running) return;
+  const t = audioNow(); sched.beat = beatAt(t); sched.time = t; sched.endTime = Infinity; sched.running = false;
+}
+function scheduleTick(){
+  if (!sched.running) return;
+  mark('schedule');
+  const now = audioNow(); settle(now);
+  const until = beatAt(now + LOOKAHEAD);
+  for (let n = 0; n < 200 && sched.idx < events.length; n++){
+    const ev = events[sched.idx];
+    if (ev.beat >= until) break;
+    const t = timeOfBeat(ev.beat);
+    sched.idx++;
+    if (t <= now - .05) continue;
+    const when = Math.max(t, now);
+    {
+      synths[ev.sec].triggerAttackRelease(ev.notes, ev.dur * 60 / state.bpm, when, ev.vel);
+      setTimeout(() => onNoteVisual(PART_SEC[ev.sec]), (when - now) * 1000);
+    }
+  }
+  mark('idle');
+}
+
+/* ---------- 打拍偵測：手腕往下揮到拍點、再彈起來的那一刻 ---------- */
+class BeatDetector{
+  constructor(onBeat){ this.onBeat = onBeat; this.last = -1e9; this.reset(); }
+  reset(){ this.mode = 'up'; this.ext = null; this.extT = 0; this.extX = 0; this.top = null; this.topX = 0; this.buf = []; this.skipped = 0; this.raw = []; }
+  push(y0, now0, x0 = 0){
+    // 先去掉「只有一張畫面突然跳掉」的辨識錯誤：取連續三張的中間值，時間用中間那張的
+    this.raw.push({y:y0, t:now0, x:x0}); if (this.raw.length > 3) this.raw.shift();
+    if (this.raw.length < 3) return;
+    const ys = this.raw.map(p => p.y).sort((a,b) => a-b), mid = this.raw[1];
+    const y = ys[1], now = mid.t, x = mid.x;
+    this.buf.push({t:now, y}); if (this.buf.length > 8) this.buf.shift();
+    if (this.ext === null){ this.ext = this.top = y; this.extT = now; this.extX = this.topX = x; return; }
+    const H = .012, minDrop = .02;
+    if (this.mode === 'down'){
+      if (y > this.ext){ this.ext = y; this.extT = now; this.extX = x; }
+      else if (y < this.ext - H){
+        const drop = this.ext - this.top, t = this.refine();
+        // 小小的一下（揮得很小）：只要落在下一拍預期的時間附近，也算一拍
+        const small = drop > .007 && this.expect && this.expect(t);
+        if ((drop > minDrop || small) && t - this.last > 250){ this.last = t; this.onBeat(t, drop, this.skipped, this.extX - this.topX, this.extX, this.ext); this.skipped = 0; }
+        else if (t - this.last > 250) this.skipped++;
+        this.mode = 'up'; this.ext = y; this.extT = now; this.extX = x;
+      }
+    } else {
+      if (y < this.ext){ this.ext = y; this.extT = now; this.extX = x; }
+      else if (y > this.ext + H){ this.top = this.ext; this.topX = this.extX; this.mode = 'down'; this.ext = y; this.extT = now; this.extX = x; }
+    }
+  }
+  refine(){
+    const i = this.buf.findIndex(p => p.t === this.extT);
+    if (i <= 0 || i >= this.buf.length-1) return this.extT;
+    const a = this.buf[i-1], b = this.buf[i], c = this.buf[i+1];
+    const x1 = a.t-b.t, x3 = c.t-b.t, y1 = a.y-b.y, y3 = c.y-b.y, den = x1*x3*(x1-x3);
+    if (!den) return b.t;
+    const A = (x3*y1 - x1*y3)/den, B = (x1*x1*y3 - x3*x3*y1)/den;
+    return A < 0 ? b.t + clamp(-B/(2*A), x1, x3) : b.t;
+  }
+}
+
+/* 速度：最近兩拍為主；如果剛好補完一整小節，也用「一小節的長度 ÷ 拍數」一起估，比較穩 */
+function estimateTempo(steps, tBeat){
+  const b = state.beats;
+  if (steps > 1 && b.length >= 2){
+    const prev = b.at(-2), last = b.at(-1) - prev;
+    for (let j=1;j<steps;j++) b.splice(b.length-1, 0, prev + last*j/steps);
+  }
+  const ivs = [];
+  for (let i=1;i<b.length;i++){ const d = b[i]-b[i-1]; if (d >= 280 && d <= 1600) ivs.push(d); }
+  if (!ivs.length) return null;
+  let iv;
+  if (ivs.length < 3) iv = ivs.at(-1);
+  else {
+    const med = median(ivs.slice(-4)), last = ivs.at(-1), prev = ivs.at(-2);
+    iv = Math.abs(last-med) > med*.35 ? med : .6*last + .4*prev;
+  }
+  const M = meter();
+  if (state.playing && state.barBeat === 1){
+    if (state.lastDownT){
+      const barIv = (tBeat - state.lastDownT) / M;
+      if (barIv > iv*.7 && barIv < iv*1.4) iv = .5*iv + .5*barIv;
+    }
+    state.lastDownT = tBeat;
+  }
+  return clamp(60000/iv, 40, 200);
+}
+
+/* 這一下往哪邊揮：C = 直直往下，L = 往畫面左邊（右手往內），R = 往畫面右邊（右手往外） */
+function onBeat(tBeat, drop, skipped, dx, ix = 0, iy = 0){
+  if (state.finished || !audioReady || !state.armed) return;
+  // 只要手往下揮、再往上彈起來，就算一拍（不看方向、不看大小，只有太接近上一拍的雜訊不算）
+  const M = meter(), period = 60000/state.bpm, gap = tBeat - state.lastBeat;
+  if (state.playing && gap < period*.45) return;                 // 連半拍都不到就又一下：是同一拍的反彈，不算
+  state.prepDrops = (state.prepDrops || []).filter(p => tBeat - p.t < 3000); state.prepDrops.push({t:tBeat, drop});
+  // 第一拍：一小節裡往下最大的那一拍（只看大小）
+  const isDown = drop >= state.bigDrop*.85;
+  state.bigDrop = Math.max(state.bigDrop*.95, drop);
+  state.drops.push(drop); if (state.drops.length > M) state.drops.shift();
+  if (!state.playing && gap > 2000){ state.beats = []; state.lastDownT = null; state.prepCount = 0; }
+  let steps = 1;
+  if (state.playing){
+    if (gap > period*1.75 && gap < period*2.5) steps = 2;             // 隔了將近兩拍：中間那一拍漏掉了
+    let nb = (state.barBeat - 1 + steps) % M + 1;
+    if (isDown && nb === M && (skipped > 0 || gap > period*1.75)){ steps++; nb = 1; }   // 這一下很大、像第一拍：補上漏掉的最後一拍
+    if (isDown && nb !== 1){                                              // 連續兩小節都在同一個位置看到最大的那一拍：重新對齊小節
+      state.offDown = state.offDown === nb ? -nb : nb;
+      if (state.offDown === -nb){ nb = 1; state.offDown = 0; state.resync = true; }
+    } else if (nb === 1 && isDown) state.offDown = 0;
+    state.barBeat = nb;
+  }
+  state.pulse = 1; state.lastBeat = tBeat; state.lastDrop = drop; state.slowed = false; state.lastIct = {x:ix, y:iy};
+  state.beats.push(tBeat); if (state.beats.length > 8) state.beats.shift();
+  if (!state.playing){
+    // 空揮的一小節：照順序數 1、2、3、4。中間隔了將近兩拍，代表有一拍太小沒抓到，幫你補上
+    const b = state.beats, ivs = b.slice(1).map((t,i) => t - b[i]).filter(d => d > 280 && d < 1600);
+    const med = ivs.length >= 2 ? median(ivs.slice(0, -1)) : 0;
+    let c = (state.prepCount || 0) + 1;
+    if (med && gap > med*1.6 && gap < med*2.6){ c += 1; steps = 2; }
+    state.prepCount = c; state.barBeat = (c - 1) % M + 1;
+  }
+  const target = estimateTempo(steps, tBeat);
+  // 大小聲：每一拍都更新，不再等整小節平均。
+  // 第二、三、四拍本來就比第一拍小，所以先記住「你每個位置平常揮多大」，再把這一拍換算成「相當於第一拍多大」。
+  const bp = state.barBeat || 1;
+  const pa = state.posAmp;
+  if (!pa[1]) { pa[1] = drop; for (let i=2;i<=M;i++) pa[i] = drop*.55; }
+  if (!pa[bp]) pa[bp] = pa[1]*.55;
+  const amp = drop * pa[1] / pa[bp];
+  pa[bp] += (drop - pa[bp]) * .25;
+  const k = state.playing ? .65 : 1;                      // 新的一拍佔 65%，一兩拍內就跟上，又不會一拍一拍跳
+  if (state.single >= 0) setLevel(state.single, state.levels[state.single] + (map(amp, .015, .22, .15, 1.8) - state.levels[state.single])*k);
+  else state.master += (map(amp, .015, .22, .35, 1.25) - state.master)*k;     // 揮得再小也聽得到，只是很小聲
+  if (!state.playing){
+    drawBarDots();
+    if (target && state.prepCount >= M && state.barBeat === M){   // 空揮滿一小節（揮到最後一拍）：樂團從下一小節的第一拍進來
+      clearTimeout(pauseTimer);
+      let start = target; const ref = state.song.bpm;
+      if (start < ref*.6 && start*2 < ref*1.6) start *= 2;          // 預備拍中間有一下太小沒抓到：速度其實是兩倍
+      else if (start > ref*1.7 && start/2 > ref*.6) start /= 2;     // 同一拍抓到兩次：速度其實是一半
+      if (start < ref*.5 || start > ref*1.8){ setStatus('速度不太對，請照建議速度重新空揮一小節'); state.beats = []; state.barBeat = 0; state.prepCount = 0; drawBarDots(); $('bpm').textContent = '--'; return; }
+      startAligned(start, tBeat);
+      master.gain.rampTo(state.master, .12);
+      state.playing = true; setStatus(''); $('ready').style.display = 'none';
+    } else setStatus(`空揮一小節：第 ${state.barBeat} 拍（共 ${M} 拍）`);
+  } else {
+    followBeat(target ?? state.bpm, tBeat, steps, clamp(drop / .04, .3, 1));   // 動作很小時（接近鏡頭雜訊），修正得少一點
+    master.gain.rampTo(state.master, .1);
+  }
+  $('bpm').textContent = Math.round(state.bpm);
+  drawBarDots();
+}
+function pauseMusic(msg){
+  if (!state.playing) return;
+  state.playing = false; state.beats = [];
+  master.gain.rampTo(0, .35);
+  pauseTimer = setTimeout(stopScheduler, 400);
+  setStatus(msg); drawBarDots();
+}
+function checkIdle(now){
+  if (!state.playing) return;
+  const gap = now - state.lastBeat, bar = meter()*60000/state.bpm;
+  if (gap > Math.max(2200, 2*bar) && !state.slowed){ state.slowed = true; setTempo(state.bpm*.8); $('bpm').textContent = Math.round(state.bpm); setStatus('手停了，音樂正在放慢'); }
+  if (gap > Math.max(4500, 3*bar)) pauseMusic('音樂停下來了，再空揮一小節就會從下一小節繼續');
+}
+const detector = new BeatDetector(onBeat);
+detector.expect = t => state.playing && Math.abs(t - (state.lastBeat + 60000/state.bpm)) < 60000/state.bpm*.3;
+
+function drawBarDots(){
+  const M = meter(), el = $('barDots');
+  if (el.children.length !== M){
+    const arrows = {4:['↓','←','→','↑'], 3:['↓','→','↑']}[M];
+    el.innerHTML = '';
+    for (let i=1;i<=M;i++){ const d = document.createElement('i'); d.innerHTML = `${i}<small>${arrows[i-1]}</small>`; el.appendChild(d); }
+  }
+  const counting = state.playing || (state.armed && state.beats.length > 0);
+  [...el.children].forEach((d,i) => d.classList.toggle('on', counting && state.barBeat === i+1));
+}
+
+/* ---------- 3D 樂團 ---------- */
+const renderer = new THREE.WebGLRenderer({canvas:$('three'), alpha:true, antialias:true});
+renderer.setClearColor(0x000000, 0);
+$('three').addEventListener('webglcontextlost', e => { e.preventDefault(); setStatus('3D 畫面中斷了（顯示卡負擔太重），正在嘗試恢復'); });
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, .1, 100);
+scene.add(new THREE.HemisphereLight(0xfff6ea, 0x3a3540, .55));
+const sun = new THREE.DirectionalLight(0xffffff, .6); sun.position.set(2,4,6); scene.add(sun);
+const fill = new THREE.PointLight(0xffffff, .3); fill.position.set(-2, 3, 2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0xfff2dd, .3); rim.position.set(-4, 2, -3); scene.add(rim);
+/* ---------- 3D 樂器（只放樂器，不放人） ---------- */
+const PI = Math.PI;
+const lam = c => new THREE.MeshLambertMaterial({color:c});
+const phong = (c, shin = 40, spec = 0x333333) => new THREE.MeshPhongMaterial({color:c, shininess:shin, specular:spec});
+const mesh = (g,m) => new THREE.Mesh(g,m);
+const at = (p,o,x,y,z) => { o.position.set(x,y,z); p.add(o); return o; };
+const rot = (o,x,y,z) => { o.rotation.set(x,y,z); return o; };
+const cyl = (rt,rb,h,s=18) => new THREE.CylinderGeometry(rt,rb,h,s);
+const box = (w,h,d) => new THREE.BoxGeometry(w,h,d);
+const sph = (r,s=16) => new THREE.SphereGeometry(r,s,12);
+const lathe = (pts, seg=40) => new THREE.LatheGeometry(pts.map(([r,y]) => new THREE.Vector2(r,y)), seg);
+/* 半圓彎管（U 形管）：中心在原點，在 xy 平面上，從 a0 角度彎到 a0+PI */
+function bend(r, t, a0, m){ const o = mesh(new THREE.TorusGeometry(r, t, 10, 24, PI), m); o.rotation.z = a0; return o; }
+/* 沿 x 軸的直管 */
+function pipeX(x0, x1, r, m){ const o = mesh(cyl(r, r, Math.abs(x1-x0), 14), m); o.rotation.z = PI/2; o.position.x = (x0+x1)/2; return o; }
+
+/* 每組樂器自己一套材質，這樣選中的那組才能單獨發亮 */
+function sectionMats(){
+  const m = {
+    wood:   phong('#6E2A0C', 45, 0x2a1a10),   // 亮漆木頭
+    wood2:  phong('#3E1C0A', 30, 0x150a05),
+    ebony:  phong('#151515', 60, 0x444444),
+    silver: phong('#C9CDD3', 100, 0x999999),
+    brass:  phong('#C99A2E', 90, 0xa08040),
+    copper: phong('#A4552A', 70, 0x8a5a3a),
+    skin:   phong('#E6DCC6', 10, 0x111111),   // 鼓皮
+    hair:   phong('#F4EFE4', 5, 0x000000),    // 弓毛
+    gut:    phong('#E7D7B0', 30, 0x222222),   // 琴橋
+  };
+  m.list = Object.values(m);
+  return m;
+}
+
+/* 小提琴／大提琴：琴身用真實的提琴輪廓（上寬、腰細、下寬）做成 */
+const violinShape = (() => {
+  const s = new THREE.Shape();
+  s.moveTo(0, 0);
+  s.bezierCurveTo(.14, 0, .22, .08, .21, .2);
+  s.bezierCurveTo(.20, .32, .12, .36, .115, .46);
+  s.bezierCurveTo(.11, .55, .18, .58, .17, .72);
+  s.bezierCurveTo(.16, .86, .08, .9, 0, .9);
+  s.bezierCurveTo(-.08, .9, -.16, .86, -.17, .72);
+  s.bezierCurveTo(-.18, .58, -.11, .55, -.115, .46);
+  s.bezierCurveTo(-.12, .36, -.20, .32, -.21, .2);
+  s.bezierCurveTo(-.22, .08, -.14, 0, 0, 0);
+  return s;
+})();
+const bodyGeo = {};
+function stringBody(depth){
+  if (!bodyGeo[depth]){
+    const g = new THREE.ExtrudeGeometry(violinShape, {depth, bevelEnabled:true, bevelThickness:.02, bevelSize:.015, bevelSegments:4, curveSegments:28});
+    g.translate(0, 0, -depth/2);
+    bodyGeo[depth] = g;
+  }
+  return bodyGeo[depth];
+}
+function buildStrings(f, m, size, cello){
+  const g = new THREE.Group(); g.scale.setScalar(size); f.inner.add(g);
+  const lift = cello ? .22 : .05;                                  // 大提琴有尾柱，琴身離地比較高
+  const depth = cello ? .16 : .07, front = depth/2 + .02;
+  at(g, mesh(stringBody(depth), m.wood), 0, lift, 0);
+  at(g, mesh(box(.06, .62, .022), m.ebony), 0, lift + .83, front + .012);           // 指板
+  at(g, mesh(box(.05, .34, .05), m.wood2), 0, lift + 1.04, 0);                     // 琴頸
+  at(g, mesh(box(.045, .17, .06), m.wood2), 0, lift + 1.27, 0);                    // 弦軸箱
+  at(g, rot(mesh(new THREE.TorusGeometry(.035, .016, 8, 20), m.wood2), 0, PI/2, 0), 0, lift + 1.38, 0);   // 琴頭渦卷
+  for (let k=0;k<4;k++) at(g, rot(mesh(cyl(.008, .008, .12, 8), m.ebony), 0, 0, PI/2), 0, lift + 1.21 + k*.035, 0);  // 弦軸
+  at(g, mesh(box(.13, .065, .012), m.gut), 0, lift + .33, front + .02);           // 琴橋
+  at(g, mesh(cyl(.035, .02, .2, 12), m.ebony), 0, lift + .13, front + .008);       // 拉弦板
+  for (let k=0;k<4;k++){                                                         // 四條弦
+    const x = (k - 1.5)*.016, s = mesh(cyl(.0025, .0025, 1.2, 6), m.silver);
+    at(g, s, x, lift + .74, front + .045);
+  }
+  for (const sx of [-1, 1]){                                                     // f 孔
+    const fh = mesh(sph(.012, 8), m.ebony); fh.scale.set(1, 6.5, .4);
+    at(g, fh, sx*.075, lift + .36, front - .006);
+  }
+  if (cello){ at(g, mesh(cyl(.01, .006, .26, 8), m.silver), 0, .1, 0); }        // 尾柱
+  else at(g, mesh(cyl(.008, .004, .06, 8), m.ebony), 0, .02, 0);
+  // 琴弓：斜放在弦上，演奏時會來回拉
+  const bow = new THREE.Group(); bow.rotation.z = 1.32; at(g, bow, 0, lift + .4, front + .08);
+  at(bow, mesh(cyl(.007, .005, 1.25, 8), m.wood2), 0, 0, 0);
+  at(bow, mesh(box(.012, 1.18, .003), m.hair), .02, -.01, 0);
+  at(bow, mesh(box(.03, .07, .02), m.ebony), .015, -.6, 0);
+  f.bowObj = bow; f.bowX = 0; f.bowAxis = new THREE.Vector3(Math.cos(1.32 + PI/2), Math.sin(1.32 + PI/2), 0);
+  f.topY = (lift + 1.42) * size;
+}
+function buildFlute(f, m, size){
+  const g = new THREE.Group(); g.scale.setScalar(size); g.rotation.z = .75; g.position.y = .15; f.inner.add(g);
+  at(g, pipeX(-.55, .55, .017, m.silver), 0, 0, 0);
+  at(g, mesh(box(.05, .012, .035), m.silver), -.42, .018, 0);                     // 吹口
+  for (let k=0;k<13;k++){                                                         // 按鍵
+    const key = rot(mesh(cyl(.016, .016, .008, 14), m.silver), PI/2, 0, 0);
+    at(g, key, -.18 + k*.055, 0, .022);
+  }
+  at(g, rot(mesh(cyl(.014, .014, .03, 14), m.silver), 0, 0, PI/2), .56, 0, 0);
+  f.topY = .95 * size;
+}
+function buildClarinet(f, m, size){
+  const g = new THREE.Group(); g.scale.setScalar(size); g.rotation.z = -.12; f.inner.add(g);
+  at(g, mesh(lathe([[0,0],[.075,0],[.062,.03],[.042,.09],[.03,.16],[.024,.24],[.022,.9],[.026,.92],[.02,1.02],[.012,1.08],[.004,1.1],[0,1.1]]), m.ebony), 0, 0, 0);
+  for (const y of [.25, .5, .72, .92]) at(g, rot(mesh(new THREE.TorusGeometry(.025, .005, 6, 18), m.silver), PI/2, 0, 0), 0, y, 0);   // 銀環
+  for (let k=0;k<10;k++){                                                         // 按鍵和音孔
+    at(g, rot(mesh(cyl(.008, .008, .01, 10), m.silver), PI/2, 0, 0), (k%2 ? .006 : -.006), .32 + k*.055, .024);
+  }
+  at(g, mesh(box(.01, .5, .006), m.silver), .02, .55, .02);                       // 長連桿
+  f.topY = 1.12 * size;
+}
+function buildTrumpet(f, m, size){
+  const g = new THREE.Group(); g.scale.setScalar(size); g.rotation.z = .5; g.position.y = .35; f.inner.add(g);
+  const r = .016;
+  at(g, pipeX(-.45, .12, r, m.brass), 0, .09, 0);                                 // 吹管
+  at(g, mesh(cyl(.006, .012, .08, 10), m.silver), -.49, .09, 0).rotation.z = PI/2; // 吹嘴
+  at(g, bend(.045, r, -PI/2, m.brass), .12, .045, 0);                             // 前面的 U 形彎管
+  at(g, pipeX(-.22, .12, r, m.brass), 0, 0, 0);
+  at(g, bend(.045, r, PI/2, m.brass), -.22, -.045, 0);                            // 後面的 U 形彎管
+  at(g, pipeX(-.22, .22, r, m.brass), 0, -.09, 0);
+  const bell = mesh(lathe([[.018,0],[.02,.08],[.03,.15],[.05,.2],[.085,.24],[.11,.25]]), m.brass);
+  bell.rotation.z = -PI/2; at(g, bell, .22, -.09, 0);                             // 喇叭口
+  for (let k=0;k<3;k++){                                                          // 三個活塞
+    at(g, mesh(cyl(.02, .02, .2, 14), m.brass), -.06 + k*.05, 0, 0);
+    at(g, mesh(cyl(.016, .016, .03, 12), m.silver), -.06 + k*.05, .115, 0);
+  }
+  f.topY = .7 * size;
+}
+function buildHorn(f, m, size){
+  const g = new THREE.Group(); g.scale.setScalar(size); g.position.y = .45; f.inner.add(g);
+  const r = .014;
+  for (const [rad, z] of [[.21, -.03], [.185, 0], [.16, .03]]) at(g, mesh(new THREE.TorusGeometry(rad, r, 10, 48), m.brass), 0, 0, z);   // 盤繞的管子
+  const bell = mesh(lathe([[.02,0],[.024,.1],[.035,.2],[.06,.28],[.11,.34],[.17,.37]]), m.brass);
+  bell.rotation.z = -2.4; at(g, bell, .14, -.16, .02);                            // 大喇叭口
+  at(g, rot(mesh(cyl(r, r, .3, 12), m.brass), 0, 0, 1.0), -.2, .16, .03);         // 吹管
+  for (let k=0;k<3;k++) at(g, rot(mesh(cyl(.026, .026, .05, 16), m.silver), PI/2, 0, 0), -.05 + k*.055, .02, .05);   // 迴轉閥
+  f.topY = .95 * size;
+}
+function buildTrombone(f, m, size){
+  const g = new THREE.Group(); g.scale.setScalar(size); g.rotation.z = -.1; f.inner.add(g);
+  const r = .012, slide = new THREE.Group(); g.add(slide);
+  for (const x of [-.035, .035]) at(slide, mesh(cyl(r, r, .8, 12), m.brass), x, .6, 0);   // 伸縮管
+  at(slide, bend(.035, r, PI, m.brass), 0, .2, 0);                                 // 下面的 U 形彎
+  at(g, mesh(cyl(r*1.4, r*1.4, .7, 12), m.brass), .16, .78, 0);                   // 喇叭這一邊的管子
+  at(g, bend(.08, r, 0, m.brass), .08, 1.13, 0);                                   // 上面的彎管（鵝頸）
+  const bell = mesh(lathe([[.02,0],[.024,.1],[.04,.2],[.07,.27],[.12,.31]]), m.brass);
+  at(g, bell, .16, 1.13, 0);                                                      // 喇叭口朝上
+  at(g, mesh(cyl(.006, .012, .07, 10), m.silver), -.035, 1.03, 0);                // 吹嘴
+  f.slide = slide; f.topY = 1.45 * size;
+}
+function buildTimpani(f, m, size){
+  const g = new THREE.Group(); g.scale.setScalar(size); f.inner.add(g);
+  const drums = [[-.42, 1], [.42, .86]];
+  for (const [x, s] of drums){
+    const d = new THREE.Group(); d.position.x = x; d.scale.setScalar(s); g.add(d);
+    at(d, mesh(lathe([[0,0],[.12,.01],[.24,.06],[.31,.16],[.345,.28],[.355,.38],[0,.38]]), m.copper), 0, .32, 0);   // 銅鍋
+    at(d, rot(mesh(new THREE.CircleGeometry(.36, 40), m.skin), -PI/2, 0, 0), 0, .705, 0);                       // 鼓皮
+    at(d, rot(mesh(new THREE.TorusGeometry(.36, .014, 8, 40), m.silver), PI/2, 0, 0), 0, .705, 0);               // 鼓框
+    for (let k=0;k<6;k++){                                                         // 調音螺桿
+      const a = k/6*PI*2;
+      at(d, mesh(cyl(.008, .008, .26, 6), m.silver), Math.cos(a)*.355, .59, Math.sin(a)*.355);
+    }
+    for (let k=0;k<3;k++){                                                         // 腳架
+      const a = k/3*PI*2 + .5, leg = mesh(cyl(.014, .014, .38, 8), m.silver);
+      leg.rotation.set(Math.sin(a)*.25, 0, -Math.cos(a)*.25);
+      at(d, leg, Math.cos(a)*.2, .16, Math.sin(a)*.2);
+    }
+  }
+  // 兩支鼓棒：敲擊時會落下
+  const mallet = (x) => {
+    const p = new THREE.Group(); p.position.set(x, 1.0, .25); g.add(p);
+    at(p, rot(mesh(cyl(.008, .008, .4, 8), m.wood2), PI/2, 0, 0), 0, 0, -.2);
+    at(p, mesh(sph(.035, 12), m.hair), 0, 0, -.4);
+    return p;
+  };
+  f.malletL = mallet(-.42); f.malletR = mallet(.36);
+  f.topY = 1.05 * size;
+}
+
+function makeFigure(sec, idx, kind){
+  const root = new THREE.Group(), inner = new THREE.Group(); root.add(inner);
+  const f = {root, inner, kind, phase:Math.random()*6, bow:0, hitL:0, hitR:0, slideZ:0, baseTilt:0};
+  const m = sec.mats;
+  if (kind === 'violin' || kind === 'viola') buildStrings(f, m, .72, false);
+  else if (kind === 'cello' || kind === 'bass') buildStrings(f, m, 1.0, true);
+  else if (kind === 'flute') buildFlute(f, m, 1.6);
+  else if (kind === 'clarinet') buildClarinet(f, m, 1.6);
+  else if (kind === 'trumpet') buildTrumpet(f, m, 1.8);
+  else if (kind === 'horn') buildHorn(f, m, 1.7);
+  else if (kind === 'trombone') buildTrombone(f, m, 1.4);
+  else if (kind === 'timpani') buildTimpani(f, m, 1.9);
+  f.baseTilt = (idx % 2 ? 1 : -1) * .05;
+  // 地上一圈這組顏色的光暈：看得出是哪一組，選中時會變亮
+  const halo = mesh(new THREE.CircleGeometry(kind === 'timpani' ? 1.6 : ['flute','clarinet','trumpet','horn','trombone'].includes(kind) ? .5 : .36, 32), new THREE.MeshBasicMaterial({color:sec.color, transparent:true, opacity:.2, depthWrite:false}));
+  halo.rotation.x = -PI/2; halo.position.y = .005; root.add(halo); sec.halos.push(halo);
+  f.head = new THREE.Object3D(); f.head.position.y = f.topY; root.add(f.head);   // 名稱標籤和選取範圍用的「頂端」
+  return f;
+}
+SECTIONS.forEach((sec,i) => {
+  sec.mats = sectionMats(); sec.halos = [];
+  sec.figs = [];
+  sec.rows.forEach((row,r) => {
+    row.figs = row.kinds.map((kind,k) => { const f = makeFigure(sec, i*5+r*3+k, kind); scene.add(f.root); sec.figs.push(f); return f; });
+  });
+});
+let W, H;
+const tmp = new THREE.Vector3();
+function project(v){ tmp.copy(v).project(camera); return {x:(tmp.x+1)/2*W, y:(1-tmp.y)/2*H}; }
+function layout(){
+  const t = Math.tan(camera.fov/2 * PI/180);
+  const far = Math.pow(Math.max(1, 1.1/camera.aspect), .7);
+  for (const sec of SECTIONS) for (const row of sec.rows){
+    const dist = row.dist*far, hh = t*dist, hw = hh*camera.aspect;
+    const cx = row.pos[0]*hw, by = row.pos[1]*hh - .75, n = row.figs.length;
+    row.figs.forEach((f,k) => {
+      const x = cx + (k-(n-1)/2)*(row.gap || .85), z = -dist + (k%2)*.2;
+      f.root.position.set(x, by, z);
+      f.root.rotation.order = 'YXZ';
+      f.root.rotation.y = Math.atan2(-x, -z);
+      f.root.rotation.x = Math.atan2(by+.75, -z) * .8;
+    });
+  }
+  scene.updateMatrixWorld(true);
+  for (const sec of SECTIONS){
+    sec.heads = sec.figs.map(f => project(f.head.getWorldPosition(new THREE.Vector3())));
+    const feet = sec.rows[0].figs.map(f => project(f.root.localToWorld(new THREE.Vector3(0,-.12,.3))));
+    sec.label = {x:clamp(feet.reduce((s,p)=>s+p.x,0)/feet.length, 80, W-80), y:Math.max(...feet.map(p=>p.y)) + 4};
+    const xs = [...sec.heads, ...feet].map(p => p.x), top = Math.min(...sec.heads.map(p => p.y));
+    const pad = Math.max(16, (sec.label.y - top)*.12);
+    sec.box = {x0:Math.min(...xs) - pad*2, x1:Math.max(...xs) + pad*2, y0:top - pad, y1:sec.label.y + 20};
+  }
+}
+
+function onNoteVisual(i){
+  const S = SS[i]; S.act = 1; S.bowDir *= -1; S.hitSide ^= 1; S.slide = Math.random()*.22;
+  if (i === TIMPANI) for (const f of SECTIONS[i].figs){ if (S.hitSide) f.hitL = 1; else f.hitR = 1; }
+}
+function animateOrchestra(dt){
+  const beat = sched.running ? beatAt(audioNow()) : performance.now()/1000*.6;
+  SECTIONS.forEach((sec,i) => {
+    const S = SS[i]; S.act *= Math.exp(-dt*4);
+    const amt = (state.playing ? 1 : .25) * (.4 + .6*state.levels[i]/1.8);
+    const sel = state.selected === i, glow = sel ? .28 : S.act*.12*amt;
+    for (const m of sec.mats.list) m.emissive.set(sec.color).multiplyScalar(glow);   // 正在演奏或被選中時發亮
+    for (const h of sec.halos) h.material.opacity = sel ? .6 : .15 + .3*S.act*amt;
+    for (const f of sec.figs){
+      f.inner.rotation.z = f.baseTilt + Math.sin(beat*PI + f.phase)*.025*amt;   // 跟著拍子輕輕搖
+      f.inner.position.y = S.act*.035*amt;                                        // 發出聲音時微微彈起
+      if (f.bowObj){                                                             // 琴弓來回拉
+        f.bow += (S.bowDir - f.bow) * Math.min(1, dt*6);
+        f.bowObj.position.x = f.bow*.07*amt; f.bowObj.position.y = 0.4 + (f.kind === 'cello' ? .22 : .05) - f.bow*.02*amt;
+      }
+      if (f.slide){ f.slideZ += (S.slide - f.slideZ) * Math.min(1, dt*10); f.slide.position.y = -f.slideZ; }   // 長號伸縮管
+      if (f.malletL){                                                            // 定音鼓棒敲下去
+        f.hitL *= Math.exp(-dt*7); f.hitR *= Math.exp(-dt*7);
+        f.malletL.rotation.x = -.5 + .5*f.hitL; f.malletR.rotation.x = -.5 + .5*f.hitR;
+      }
+    }
+  });
+}
+
+/* ---------- 單樂器控制：左手食指指向哪組樂手 ---------- */
+const dirty = new Set(); let lastApply = 0;
+function setLevel(i, v){
+  v = clamp(v, .1, 1.8);
+  if (Math.abs(state.levels[i]-v) < .003) return;
+  state.levels[i] = v; dirty.add(i);
+}
+function applyLevels(now){
+  if (!secGain || !dirty.size || now - lastApply < 66) return;
+  lastApply = now;
+  for (const i of dirty) secGain[i].gain.rampTo(state.levels[i], .15);
+  dirty.clear();
+}
+function sectionAt(p){
+  let best = -1, bd = Infinity;
+  SECTIONS.forEach((sec,i) => {
+    const b = sec.box;
+    if (p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1){
+      const d = Math.hypot((p.x - (b.x0+b.x1)/2)/(b.x1-b.x0), (p.y - (b.y0+b.y1)/2)/(b.y1-b.y0));
+      if (d < bd){ bd = d; best = i; }
+    }
+  });
+  return best;
+}
+const boxCenter = b => ({x:(b.x0+b.x1)/2, y:(b.y0+b.y1)/2});
+/* 每組樂器一個左手手勢（都是手勢辨識模型本來就認得的手勢；張開手是指揮用、握拳是開始/收音用，所以不拿來選樂器） */
+const GESTURES = [
+  {sec:0, gesture:'Pointing_Up', icon:'☝️', hint:'食指朝上'},
+  {sec:1, gesture:'Victory',     icon:'✌️', hint:'比 YA'},
+  {sec:2, gesture:'Thumb_Up',    icon:'👍', hint:'比讚'},
+  {sec:3, gesture:'ILoveYou',    icon:'🤟', hint:'大拇指+食指+小指'},
+  {sec:4, gesture:'Thumb_Down',  icon:'👎', hint:'大拇指朝下'},
+];
+function buildLegend(){
+  const box = $('legend'); box.innerHTML = '';
+  for (const g of GESTURES){
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'lg-row'; row.dataset.sec = g.sec;
+    row.innerHTML = `<i class="lg-icon" style="border-color:${SECTIONS[g.sec].color}">${g.icon}</i><span><b>${SECTIONS[g.sec].name}</b><small>${g.hint}</small></span>`;
+    box.appendChild(row);
+  }
+}
+function setSingle(i){
+  if (state.single === i) return;
+  state.single = i; state.selected = i;
+  setStatus(i >= 0 ? `單獨控制：${SECTIONS[i].name}` : '');
+  document.querySelectorAll('.lg-row').forEach(r => r.classList.toggle('on', +r.dataset.sec === i));
+}
+
+/* ---------- 鏡頭 ---------- */
+const dist2 = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+function isFist(lm){
+  const palm = dist2(lm[0], lm[9]);
+  return [8,12,16,20].reduce((s,i)=> s + dist2(lm[i], lm[0]), 0) / 4 / palm < 1.15;   // 要握緊才算，手指自然彎曲不算
+}
+function palmCenter(lm){
+  const ids = [0,5,9,13,17];
+  return {x:ids.reduce((s,i)=>s+lm[i].x,0)/5, y:ids.reduce((s,i)=>s+lm[i].y,0)/5};
+}
+function toScreen(mx, y){
+  const s = Math.max(W/640, H/480), dw = 640*s, dh = 480*s;
+  return {x:(W-dw)/2 + mx*dw, y:(H-dh)/2 + y*dh};
+}
+
+let lastPoseFrame = -1, landmarker, poseLm, video, camCtx, CONNECTIONS = [], lastHandT = 0, lastPoseT = 0;
+async function startCamera(){
+  const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+  const files = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+  landmarker = await vision.GestureRecognizer.createFromOptions(files, {
+    baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task', delegate:'CPU'},
+    runningMode:'VIDEO', numHands:2, minHandDetectionConfidence:.6, minHandPresenceConfidence:.6, minTrackingConfidence:.5,
+  });
+  poseLm = await vision.PoseLandmarker.createFromOptions(files, {
+    baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate:'CPU'},
+    runningMode:'VIDEO', numPoses:1,
+  });
+  CONNECTIONS = vision.GestureRecognizer.HAND_CONNECTIONS || vision.HandLandmarker.HAND_CONNECTIONS;
+  video = $('video');
+  video.srcObject = await navigator.mediaDevices.getUserMedia({video:{width:640, height:480, facingMode:'user'}});
+  await video.play();
+  const cc = $('camCanvas'); cc.width = 640; cc.height = 480; camCtx = cc.getContext('2d');
+}
+
+const perf = {pose:20, hand:20, poseGap:45, handGap:80, fps:60, slowFrames:0};
+function timed(fn){ const t0 = performance.now(); fn(); return performance.now() - t0; }
+function processCamera(now){
+  if (!landmarker || video.readyState < 2 || document.hidden) return;
+  if (video.currentTime !== lastPoseFrame && now - lastPoseT >= perf.poseGap){   // 姿勢（打拍用）：每張新畫面都做，約每秒 30 次
+    lastPoseT = now; lastPoseFrame = video.currentTime; mark('pose');
+    perf.pose += (timed(() => processPose(now)) - perf.pose)*.2;
+    perf.poseGap = clamp(perf.pose*1.6, 28, 150);
+  } else if (now - lastHandT >= perf.handGap){          // 手指（指向、握拳）：每秒約 12 次
+    lastHandT = now; mark('hands');
+    perf.hand += (timed(() => processHands(now)) - perf.hand)*.2;
+    perf.handGap = clamp(perf.hand*3, 80, 300);
+  }
+}
+
+/* 雙手一起打拍：兩隻手腕的高度取平均；左手比手勢控制單一樂器時，只用右手 */
+let handsSeen = 0;
+
+function processPose(now){
+  const lm = poseLm.detectForVideo(video, now).landmarks?.[0];
+  if (!lm){ state.pose = null; state.cursors = {R:null, L:null}; return; }
+  const vis = p => (p.visibility ?? 1) > .3;
+  const hand = (w, k) => {                                     // 手腕 + 食指，兩點平均
+    const a = lm[w], b = lm[k];
+    if (!vis(a) || a.y > 1.05) return null;
+    return vis(b) ? {mx:1-(a.x+b.x)/2, y:(a.y+b.y)/2} : {mx:1-a.x, y:a.y};
+  };
+  const r = state.swapHands ? hand(15,19) : hand(16,20), l = state.swapHands ? hand(16,20) : hand(15,19);
+  state.pose = {t:now, R:r, L:l};
+  if (r || l){ state.moves.push({t:now, y:((r ? r.y : 0) + (l ? l.y : 0)) / ((r ? 1 : 0) + (l ? 1 : 0))}); while (state.moves.length && now - state.moves[0].t > 1200) state.moves.shift(); }
+  const useL = l && state.single < 0 && state.gCand < 0;
+  state.cursors = {R: r ? toScreen(r.mx, r.y) : null, L: useL ? toScreen(l.mx, l.y) : null};
+  let y = null, x = 0;
+  if (r && useL){ y = (r.y + l.y)/2; x = (r.mx + (1 - l.mx))/2; }    // 左手是鏡像動作，左右要反過來
+  else if (r){ y = r.y; x = r.mx; }
+  else if (useL){ y = l.y; x = 1 - l.mx; }
+  if (y === null) return;
+  if (now - handsSeen > 300) detector.reset();
+  handsSeen = now;
+  detector.push(y, now, x);
+}
+
+const track = {R:null, L:null};
+function assignHands(hands, now){
+  for (const h of hands){
+    const c = h.cat;
+    let p = c ? (c.categoryName === 'Right' ? c.score : 1 - c.score) : .5;
+    h.pR = state.swapHands ? 1 - p : p;
+  }
+  const pose = state.pose && now - state.pose.t < 300 ? state.pose : null;
+  const ref = {R: pose?.R ? {x:pose.R.mx, y:pose.R.y, t:now} : track.R, L: pose?.L ? {x:pose.L.mx, y:pose.L.y, t:now} : track.L};
+  const dist = (tr,h) => tr && now - tr.t < 800 ? Math.hypot(tr.x-h.mx, tr.y-h.y) : .5;
+  let right = null, left = null;
+  if (hands.length >= 2){
+    const [a,b] = hands;
+    const cost = (r,l) => -Math.log(r.pR+.01) - Math.log(1-l.pR+.01) + 6*(dist(ref.R,r) + dist(ref.L,l));
+    if (cost(a,b) <= cost(b,a)){ right = a; left = b; } else { right = b; left = a; }
+  } else if (hands.length === 1){
+    const h = hands[0], dR = dist(ref.R,h), dL = dist(ref.L,h);
+    if (Math.min(dR,dL) < .15 && Math.abs(dR-dL) > .06) dR < dL ? right = h : left = h;
+    else h.pR >= .5 ? right = h : left = h;
+  }
+  if (right) track.R = {x:right.mx, y:right.y, t:now};
+  if (left)  track.L = {x:left.mx,  y:left.y,  t:now};
+  return {right, left};
+}
+function processHands(now){
+  const res = landmarker.recognizeForVideo(video, now);
+  const labels = res.handedness || res.handednesses || [];
+  const hands = res.landmarks.map((lm,i) => {
+    const c = palmCenter(lm), gest = res.gestures?.[i]?.[0];
+    const name = gest && gest.score > .55 ? gest.categoryName : 'None';
+    return {lm, mx:1-c.x, y:c.y, gest:name, fist:name === 'Closed_Fist', cat:labels[i]?.[0]};
+  });
+  const {right, left} = assignHands(hands, now);
+
+  // 雙手握拳「並且停住不動」才收音：揮小拍子時手指自然彎起來，不會被誤當成收音
+  const ys = state.moves.filter(p => now - p.t < 450).map(p => p.y);
+  const still = ys.length >= 4 && Math.max(...ys) - Math.min(...ys) < .025;
+  if (right && left && right.fist && left.fist && still){
+    if (!state.fistSince) state.fistSince = now;
+    else if (now - state.fistSince > 350) pauseMusic('收！雙手握拳停住了。再空揮一小節就會繼續');
+  } else state.fistSince = 0;
+
+  // 開始前：雙手握拳三秒，才開始聽預備拍
+  if (!state.armed){
+    if (right && left && right.fist && left.fist){
+      if (!state.armSince) state.armSince = now;
+      state.armLast = now;
+    } else if (now - state.armLast > 300) state.armSince = 0;     // 中間偶爾一兩張沒認到，不算放開
+    const prog = state.armSince ? (now - state.armSince)/3000 : 0;
+    updateReady(prog);
+    if (prog >= 1){ state.armed = true; detector.reset(); state.beats = []; updateReady(1); }
+  }
+
+  // 左手比手勢：單獨控制那組樂器（同一個手勢連續看到 3 次才算，避免揮動中誤判）
+  const g = left && state.armed ? GESTURES.find(x => x.gesture === left.gest) : null;
+  if (g){
+    state.gSeen = now;
+    if (state.gCand === g.sec) state.gCount++; else { state.gCand = g.sec; state.gCount = 1; }
+    if (state.gCount >= 3) setSingle(g.sec);
+  } else if (now - state.gSeen > 500){                          // 手勢放掉超過 0.5 秒：回到全體控制
+    state.gCand = -1; state.gCount = 0;
+    if (state.single >= 0) setSingle(-1);
+  }
+
+  camCtx.clearRect(0,0,640,480);
+  for (const h of hands){                                         // 手的關節只畫成點，不畫連線
+    camCtx.fillStyle = h === right ? 'rgba(255,210,122,.95)' : 'rgba(255,255,255,.9)';
+    for (const p of h.lm){ camCtx.beginPath(); camCtx.arc(p.x*640, p.y*480, 3.2, 0, 7); camCtx.fill(); }
+  }
+}
+
+/* ---------- 疊在最上層的 2D ---------- */
+const stage = $('stage'), ctx = stage.getContext('2d');
+function resize(){
+  const dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
+  stage.width = W*dpr; stage.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  renderer.setPixelRatio(Math.min(dpr, 1.25)); renderer.setSize(W, H, false);
+  camera.aspect = W/H; camera.updateProjectionMatrix();
+  layout();
+}
+addEventListener('resize', resize);
+function outlined(txt, x, y, font, fill){
+  ctx.font = font; ctx.lineJoin = 'round'; ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.strokeText(txt, x, y);
+  ctx.fillStyle = fill; ctx.fillText(txt, x, y);
+}
+
+function drawTrail(list, cur, rgb){
+  if (cur){ list.push({...cur}); if (list.length > 24) list.shift(); } else if (list.length) list.shift();
+  for (let i=0;i<list.length;i++){                               // 手揮過的路徑：用一串漸漸變淡的點，不畫線
+    const a = list[i], k = (i+1)/list.length;
+    ctx.beginPath(); ctx.arc(a.x, a.y, 1.5 + 4.5*k, 0, 7);
+    ctx.fillStyle = `rgba(${rgb},${k})`; ctx.fill();
+  }
+  const last = list.at(-1);
+  if (last && state.pulse > .02){
+    ctx.beginPath(); ctx.arc(last.x, last.y, 18 + 40*(1-state.pulse), 0, 7);
+    ctx.lineWidth = 3; ctx.strokeStyle = `rgba(${rgb},${state.pulse})`; ctx.stroke();
+  }
+}
+function drawOverlay(){
+  ctx.clearRect(0,0,W,H);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  SECTIONS.forEach((sec,i) => {
+    const p = sec.label, sel = state.selected === i;
+    if (!sel){ outlined(sec.name, p.x, p.y, '500 13px "Noto Sans TC", sans-serif', 'rgba(255,255,255,.9)'); return; }
+    const lv = state.levels[i]/1.8;
+    outlined(`${sec.name}　音量 ${Math.round(lv*100)}%`, p.x, p.y, '700 17px "Noto Sans TC", sans-serif', '#FFFFFF');
+    ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(p.x-50, p.y+24, 100, 6);
+    ctx.fillStyle = sec.color; ctx.fillRect(p.x-50, p.y+24, 100*lv, 6);
+  });
+  drawTrail(state.trails.R, state.cursors.R, '255,210,122');
+  drawTrail(state.trails.L, state.cursors.L, '160,220,255');
+  state.pulse *= .9;
+
+}
+
+/* ---------- 時間條 ---------- */
+function buildTimebar(){
+  $('tbTitle').textContent = `${state.song.title}（${state.song.meter} 拍）`;
+}
+let uiShown = 0;
+function updateUI(now){
+  const pos = sched.running ? clamp(beatAt(audioNow()), 0, total) : clamp(sched.beat, 0, total);
+  if (now - uiShown < 100) return;
+  uiShown = now;
+  const bpm = state.playing ? state.bpm : state.song.bpm;
+  $('tbFill').style.width = (pos/total*100) + '%';
+  $('tbTime').textContent = `${fmt(state.elapsed)} / 約 ${fmt(state.elapsed + (total-pos)*60/bpm)}`;
+}
+
+/* ---------- 曲目流程 ---------- */
+function loadSong(){
+  ({events, total} = arrange(state.song));
+  const M = state.song.meter;
+  sched.running = false; sched.beat = 0; sched.idx = 0; sched.endTime = Infinity;
+  Object.assign(state, {prepLat:false, prepCount:0, rightSpan:0, lastIct:null, dirHist:[], posAmp:[], playing:false, finished:false, elapsed:0, beats:[], drops:[], bigDrop:.05, lastDownT:null, barBeat:0, bpm:state.song.bpm});
+  $('bpm').textContent = '--';
+  setSingle(-1);
+  for (let i=0;i<NS;i++) setLevel(i, 1);
+  if (master) master.gain.rampTo(0, .1);
+  $('result').style.display = 'none';
+  buildTimebar(); drawBarDots();
+  state.armed = false; state.armSince = 0;
+  state.gCand = -1; state.gCount = 0;
+  if (state.armed){ $('ready').style.display = 'none'; setStatus(`${M} 拍子，建議每分鐘 ${state.song.bpm} 拍。先空揮一小節就會開始`); }
+  else { setStatus(`${M} 拍子，建議每分鐘 ${state.song.bpm} 拍`); updateReady(0); }
+}
+/* 開始前的提示：先雙手握拳三秒，再空揮一小節 */
+function updateReady(prog){
+  const el = $('ready'); el.style.display = 'block';
+  if (prog >= 1){
+    $('readyTitle').textContent = '很好！現在先空揮一小節';
+    $('readyText').textContent = `照 ${meter()} 拍子的圖形從第 1 拍揮起，揮滿 ${meter()} 拍，樂團會在下一小節的第一拍進來`;
+    $('readyBar').style.width = '100%';
+  } else if (prog > 0){
+    $('readyTitle').textContent = `保持握拳… ${Math.ceil(3 - prog*3)}`;
+    $('readyText').textContent = '雙手繼續握拳，不要放開';
+    $('readyBar').style.width = (prog*100) + '%';
+  } else {
+    $('readyTitle').textContent = '請雙手握拳，舉在胸前';
+    $('readyText').textContent = '握住三秒鐘，程式就會開始聽你的預備拍';
+    $('readyBar').style.width = '0%';
+  }
+}
+function finishSong(){
+  state.finished = true; state.playing = false; stopScheduler();
+  master.gain.rampTo(0, 2.5); drawBarDots();
+  {
+    $('resTitle').textContent = '演奏完成';
+    $('resScore').textContent = fmt(state.elapsed);
+    $('resStars').textContent = '';
+    $('resDetail').textContent = `《${state.song.title}》全曲指揮完畢`;
+  }
+  $('result').style.display = 'grid'; $('ready').style.display = 'none';
+}
+
+/* ---------- 主迴圈 ---------- */
+let lastT = performance.now();
+function loop(){
+  requestAnimationFrame(loop);
+  const now = performance.now();
+  if (now - lastT < 15) return;
+  const raw = (now-lastT)/1000, dt = Math.min(.1, raw); lastT = now;
+  mark('update');
+  if (state.input === 'camera') processCamera(now);
+  mark('update');
+  checkIdle(now);
+  applyLevels(now);
+  if (state.playing && sched.running) state.elapsed += dt;
+  if (sched.running && !state.finished && beatAt(audioNow()) >= total + .5) finishSong();
+  if (state.input) updateUI(now);
+  mark('animate'); animateOrchestra(dt);
+  mark('render'); renderer.render(scene, camera);
+  mark('overlay'); drawOverlay();
+  mark('idle');
+}
+
+/* ---------- 選單與教學 ---------- */
+const songBox = $('songs');
+SONGS.forEach((s,i) => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.setAttribute('aria-pressed', i === 0);
+  b.innerHTML = `${s.title}<small>${s.composer}・${s.meter} 拍子</small>`;
+  b.onclick = () => { state.song = s; songBox.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); };
+  songBox.appendChild(b);
+});
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+  document.querySelectorAll('.tabpanel').forEach(p => p.hidden = p.id !== b.dataset.tab);
+});
+
+async function begin(input){
+  $('btnCam').disabled = true;
+  try {
+    if (!audioReady){ $('msg').textContent = '正在準備樂團……'; await setupAudio(); }
+    if (input === 'camera' && !landmarker){ $('msg').textContent = '正在開啟鏡頭和載入辨識，第一次大約要幾秒鐘……'; await startCamera(); }
+    state.camLatMs = 70;
+    state.input = input;
+    $('cam').style.display = input === 'camera' ? 'block' : 'none';
+    $('tools').style.display = input === 'camera' ? 'flex' : 'none';
+    $('timebar').style.display = 'flex'; $('legend').style.display = 'flex';
+    $('help').textContent = '雙手照拍子圖形一起揮　揮大聲音大　左手比左上角列出的手勢可單獨控制　雙手握拳停住收音';
+    $('start').style.display = 'none'; $('msg').textContent = '';
+    loadSong();
+  } catch (err){
+    console.error(err);
+    $('msg').textContent = `沒辦法開啟鏡頭（${err.name || err.message}）。請確認瀏覽器已允許使用鏡頭，再重新整理頁面試一次。`;
+  }
+  $('btnCam').disabled = false;
+}
+$('btnCam').onclick = () => begin('camera');
+$('swap').onclick = () => { state.swapHands = !state.swapHands; track.R = track.L = null; };
+$('again').onclick = () => loadSong();
+$('menu').onclick = () => {
+  state.playing = false; stopScheduler(); if (master) master.gain.rampTo(0, .2);
+  $('result').style.display = 'none'; $('ready').style.display = 'none'; $('legend').style.display = 'none';
+  $('btnCam').textContent = landmarker ? '用鏡頭開始指揮' : '開啟鏡頭開始指揮';
+  $('start').style.display = 'grid';
+};
+$('toMenu').onclick = $('menu').onclick;
+
+try {
+  const lastStep = localStorage.getItem(MARK_KEY);
+  if (lastStep && lastStep !== 'closed' && lastStep !== 'menu')
+    $('msg').textContent = `上次卡住時，程式正在「${STEP_NAME[lastStep] || lastStep}」。請把這句話告訴 Claude。`;
+} catch {}
+mark('menu');
+addEventListener('pagehide', () => mark('closed'));
+resize(); drawBarDots(); buildLegend(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
