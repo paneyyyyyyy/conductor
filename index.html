@@ -1280,16 +1280,16 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
 async function begin(input){
   $('btnCam').disabled = true;
   try {
-    if (!audioReady){ $('msg').textContent = '正在載入真實樂器的聲音，第一次大約要 10～30 秒……'; await setupAudio(); }
+    if (!audioReady){ $('msg').textContent = '正在準備樂團……'; await setupAudio(); }
     if (input === 'camera' && !landmarker){ $('msg').textContent = '正在開啟鏡頭和載入辨識，第一次大約要幾秒鐘……'; await startCamera(); }
+    state.camLatMs = 70;
     state.input = input;
     $('cam').style.display = input === 'camera' ? 'block' : 'none';
     $('tools').style.display = input === 'camera' ? 'flex' : 'none';
     $('timebar').style.display = 'flex'; $('legend').style.display = 'flex';
-    $('help').textContent = '雙手照拍子圖形一起揮　揮大聲音大　左手比左上角列出的手勢可單獨控制　雙手握拳停住收音';
+    $('help').textContent = '雙手照拍子圖形一起揮 揮大聲音大 左手比左上角列出的手勢可單獨控制 雙手握拳停住收音';
     $('start').style.display = 'none'; $('msg').textContent = '';
     loadSong();
-    if (soundReport){ setStatus(soundReport); soundReport = ''; }
   } catch (err){
     console.error(err);
     $('msg').textContent = `沒辦法開啟鏡頭（${err.name || err.message}）。請確認瀏覽器已允許使用鏡頭，再重新整理頁面試一次。`;
@@ -1298,6 +1298,14 @@ async function begin(input){
 }
 $('btnCam').onclick = () => begin('camera');
 $('swap').onclick = () => { state.swapHands = !state.swapHands; track.R = track.L = null; };
+$('again').onclick = () => loadSong();
+$('menu').onclick = () => {
+  state.playing = false; stopScheduler(); if (master) master.gain.rampTo(0, .2);
+  $('result').style.display = 'none'; $('ready').style.display = 'none'; $('legend').style.display = 'none';
+  $('btnCam').textContent = landmarker ? '用鏡頭開始指揮' : '開啟鏡頭開始指揮';
+  $('start').style.display = 'grid';
+};
+$('toMenu').onclick = $('menu').onclick;
 
 /* ---------- 調整面板：一邊揮一邊拉滑桿，調到順手 ---------- */
 let gui = null;
@@ -1350,8 +1358,6 @@ $('toMenu').onclick = $('menu').onclick;
 
 try {
   const lastStep = localStorage.getItem(MARK_KEY);
-  if (lastStep && lastStep !== 'closed' && lastStep !== 'menu')
-    const stepName = STEP_NAME[lastStep] || lastStep;
 } catch {}
 mark('menu');
 addEventListener('pagehide', () => mark('closed'));
