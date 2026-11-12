@@ -147,7 +147,7 @@ button:disabled{opacity:.5;cursor:wait}
       <div class="buttons">
         <button class="primary" id="btnCam">開啟鏡頭開始指揮</button>
       </div>
-      <div class="msg" id="msg"></div>
+      <div class="" id="msg"></div>
     </section>
 
     <section class="tabpanel learn" id="tabLearn" hidden>
@@ -1351,7 +1351,7 @@ $('toMenu').onclick = $('menu').onclick;
 try {
   const lastStep = localStorage.getItem(MARK_KEY);
   if (lastStep && lastStep !== 'closed' && lastStep !== 'menu')
-    $('msg').textContent = `「${STEP_NAME[lastStep] || lastStep}」。`;
+    
 } catch {}
 mark('menu');
 addEventListener('pagehide', () => mark('closed'));
