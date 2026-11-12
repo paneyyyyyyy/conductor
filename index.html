@@ -104,6 +104,7 @@ button:disabled{opacity:.5;cursor:wait}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.umd.min.js"></script>
 </head>
 <body>
 <div class="cam" id="cam"><video id="video" playsinline muted></video><canvas id="camCanvas"></canvas></div>
@@ -117,7 +118,7 @@ button:disabled{opacity:.5;cursor:wait}
   <div class="bar"><i id="readyBar"></i></div>
 </div>
 <div class="help" id="help"></div>
-<div class="tools" id="tools"><button id="swap">左右手對調</button></div>
+<div class="tools" id="tools"><button id="tuneBtn">調整面板</button><button id="swap">左右手對調</button></div>
 <div class="timebar" id="timebar">
   <span class="tb-title" id="tbTitle"></span>
   <div class="tb-track"><div class="tb-fill" id="tbFill"></div></div>
@@ -311,6 +312,11 @@ const SYN = [
   {o:{type:'sawtooth'}, lp:850, vol:-16, a:.08}, {o:{type:'sawtooth'}, lp:1800, vol:-19, a:.03}, null,
 ];
 
+/* 可以在「調整面板」即時修改的設定（會記在這台電腦的瀏覽器裡） */
+const TUNE_DEFAULT = {camLat:70, minDrop:.02, turn:.012, bounce:.45, alpha:.6, beta:.25, maxStep:8, ampLow:.015, ampHigh:.22, glow:1, volume:0};
+const TUNE = {...TUNE_DEFAULT};
+try { Object.assign(TUNE, JSON.parse(localStorage.getItem('conductor-tune') || '{}')); } catch {}
+const saveTune = () => { try { localStorage.setItem('conductor-tune', JSON.stringify(TUNE)); } catch {} };
 const state = {
   mode:'free', input:null, song:SONGS[0], playing:false, finished:false, bpm:90, beats:[], lastBeat:-1e9, slowed:false,
   levels:Array(NS).fill(1), selected:-1, single:-1, master:.8, pulse:0,
@@ -322,23 +328,72 @@ let synths, secGain, master, pauseTimer = null, audioReady = false;
 let events = [], total = 64;
 const setStatus = s => { $('status').textContent = s; };
 
+/* 真實樂器取樣：用公開的 MusyngKite 音色庫（真樂器錄音）。每個聲部挑幾個音下載，其他音由它自動變調補上。
+   如果網路載不到，就退回原本的電子合成音，遊戲還是能玩。 */
+const SF_BASE = 'https://gleitz.github.io/midi-js-soundfonts/MusyngKite/';
+const VOICES = [
+  {inst:'violin',        label:'小提琴',   notes:['G3','Bb3','Db4','E4','G4','Bb4','Db5','E5','G5','Bb5','Db6'], vol:-5,  rel:.5},
+  {inst:'viola',         label:'中提琴',   notes:['C3','Eb3','Gb3','A3','C4','Eb4','Gb4','A4','C5'],             vol:-9,  rel:.5},
+  {inst:'cello',         label:'大提琴',   notes:['A1','C2','Eb2','Gb2','A2','C3','Eb3','Gb3','A3','C4'],        vol:-4,  rel:.5},
+  {inst:'flute',         label:'長笛',     notes:['C5','Eb5','Gb5','A5','C6','Eb6','Gb6','A6','C7'],             vol:-8,  rel:.4},
+  {inst:'clarinet',      label:'單簧管',   notes:['D3','F3','Ab3','B3','D4','F4','Ab4','B4','D5'],               vol:-13, rel:.3},
+  {inst:'french_horn',   label:'法國號',   notes:['C3','Eb3','Gb3','A3','C4','Eb4','Gb4'],                       vol:-9,  rel:.6},
+  {inst:'brass_section', label:'銅管',     notes:['C3','Eb3','Gb3','A3','C4','Eb4','Gb4','A4','C5'],             vol:-11, rel:.4},
+  {inst:'timpani',       label:'定音鼓',   notes:['C2','Eb2','Gb2','A2','C3','Eb3'],                             vol:-2,  rel:1.5},
+];
+function loadFont(inst){                                   // 用 <script> 載入一個樂器的音色檔
+  return new Promise((res, rej) => {
+    window.MIDI = window.MIDI || {}; window.MIDI.Soundfont = window.MIDI.Soundfont || {};
+    const el = document.createElement('script');
+    el.src = SF_BASE + inst + '-mp3.js';
+    el.onload = () => window.MIDI.Soundfont[inst] ? res(window.MIDI.Soundfont[inst]) : rej(new Error('空的音色檔'));
+    el.onerror = () => rej(new Error('下載失敗'));
+    setTimeout(() => rej(new Error('下載太久')), 45000);
+    document.head.appendChild(el);
+  });
+}
+async function makeSampler(v, out){
+  const font = await loadFont(v.inst), urls = {};
+  for (const n of v.notes) if (font[n]) urls[n] = font[n];
+  if (!Object.keys(urls).length) throw new Error('沒有可用的音');
+  const sampler = await new Promise((res, rej) => {
+    const sm = new Tone.Sampler({urls, release:v.rel, onload:() => res(sm), onerror:rej});
+    setTimeout(() => rej(new Error('解碼太久')), 30000);
+  });
+  delete window.MIDI.Soundfont[v.inst];                    // 用完就釋放，省記憶體
+  sampler.volume.value = v.vol; sampler.connect(out);
+  return sampler;
+}
+function makeSynth(i, out){                                // 備用：電子合成音
+  const sp = SYN[i];
+  if (!sp){
+    const m = new Tone.MembraneSynth({pitchDecay:.04, octaves:1.5, envelope:{attack:.002, decay:.7, sustain:0, release:.6}}).connect(out);
+    m.volume.value = -6; return m;
+  }
+  const p = new Tone.PolySynth(Tone.Synth, {oscillator:sp.o, envelope:{attack:sp.a ?? .06, decay:.15, sustain:.75, release:sp.r ?? .35}})
+    .chain(new Tone.Filter(sp.lp,'lowpass'), out);
+  p.volume.value = sp.vol; p.maxPolyphony = 8; return p;
+}
+let soundReport = '';
 async function setupAudio(){
   Tone.context.lookAhead = 0.05;
   await Tone.start();
+  Tone.Destination.volume.value = TUNE.volume;
   const limiter = new Tone.Limiter(-1).toDestination();
-  const reverb = new Tone.Reverb({decay:2.8, wet:.28}).connect(limiter);
+  const reverb = new Tone.Reverb({decay:2.6, wet:.24}).connect(limiter);
   await reverb.generate();
   master = new Tone.Gain(0).connect(reverb);
   secGain = SECTIONS.map(() => new Tone.Gain(1).connect(master));
-  synths = SYN.map((sp,i) => {
-    if (!sp){
-      const m = new Tone.MembraneSynth({pitchDecay:.04, octaves:1.5, envelope:{attack:.002, decay:.7, sustain:0, release:.6}}).connect(secGain[PART_SEC[i]]);
-      m.volume.value = -6; return m;
-    }
-    const p = new Tone.PolySynth(Tone.Synth, {oscillator:sp.o, envelope:{attack:sp.a ?? .06, decay:.15, sustain:.75, release:sp.r ?? .35}})
-      .chain(new Tone.Filter(sp.lp,'lowpass'), secGain[PART_SEC[i]]);
-    p.volume.value = sp.vol; p.maxPolyphony = 8; return p;
-  });
+  let done = 0; const failed = [];
+  synths = await Promise.all(VOICES.map(async (v, i) => {
+    const out = secGain[PART_SEC[i]];
+    let inst;
+    try { inst = await makeSampler(v, out); }
+    catch (err){ console.warn('取樣載入失敗', v.inst, err); failed.push(v.label); inst = makeSynth(i, out); }
+    $('msg').textContent = `正在載入真實樂器的聲音……（${++done}/${VOICES.length}）`;
+    return inst;
+  }));
+  soundReport = failed.length ? `這幾種樂器的真實聲音沒載到，先用電子音代替：${failed.join('、')}` : '';
   setInterval(scheduleTick, 25);
   audioReady = true;
 }
@@ -364,7 +419,7 @@ function setTempo(bpm){
   if (sched.running){ const t = audioNow(); settle(t); anchor(t, beatAt(t), state.bpm/60); }
 }
 const outLat = () => { const c = Tone.context.rawContext; return ((c.outputLatency || 0) + (c.baseLatency || 0)) || .02; };
-const ictusAudio = tBeat => audioNow() - (performance.now() - tBeat)/1000 - state.camLatMs/1000 - outLat();
+const ictusAudio = tBeat => audioNow() - (performance.now() - tBeat)/1000 - TUNE.camLat/1000 - outLat();
 const meter = () => state.song.meter;
 function startAligned(bpm, tBeat){
   state.bpm = bpm;
@@ -379,7 +434,6 @@ function startAligned(bpm, tBeat){
    1. 拍點位置：這一拍往你的手靠過去一部分（ALPHA）
    2. 速度：照差距調整每拍的長度（BETA）
    這種修正方式（alpha-beta 追蹤）反應快、又不容易衝過頭。 */
-const ALPHA = .6, BETA = .25;
 function followBeat(target, tBeat, steps, conf = 1){
   const now = audioNow(), tIct = ictusAudio(tBeat), M = meter();
   settle(now);
@@ -408,10 +462,10 @@ function followBeat(target, tBeat, steps, conf = 1){
   state.errs.push(e); if (state.errs.length > 3) state.errs.shift();
   const strong = state.errs.length === 3 && state.errs.every(v => Math.sign(v) === Math.sign(e) && Math.abs(v) > P*.06);
   // 平常每拍速度最多改 8%（單一拍再怪也不會讓樂團暴衝）；連續三拍都往同一邊偏，代表你真的在改速度，才放寬到 20%
-  const lim = strong ? .2 : .08;
-  P = clamp(P + (strong ? BETA*1.6 : BETA) * conf * e, P*(1-lim), P*(1+lim));
+  const lim = strong ? Math.max(.2, TUNE.maxStep/100*2.5) : TUNE.maxStep/100;
+  P = clamp(P + (strong ? TUNE.beta*1.6 : TUNE.beta) * conf * e, P*(1-lim), P*(1+lim));
   state.bpm = clamp(60 / P, 30, 200);
-  const anchorT = tPred + ALPHA * conf * e;                       // 這一拍「應該」在的時間
+  const anchorT = tPred + TUNE.alpha * conf * e;                       // 這一拍「應該」在的時間
   const nextT = anchorT + P;                                      // 下一拍
   const bNow = beatAt(now);
   if (nextT - now < .06){ anchor(now, bNow, 1/P); return; }
@@ -455,7 +509,7 @@ class BeatDetector{
     const y = ys[1], now = mid.t, x = mid.x;
     this.buf.push({t:now, y}); if (this.buf.length > 8) this.buf.shift();
     if (this.ext === null){ this.ext = this.top = y; this.extT = now; this.extX = this.topX = x; return; }
-    const H = .012, minDrop = .02;
+    const H = TUNE.turn, minDrop = TUNE.minDrop;
     if (this.mode === 'down'){
       if (y > this.ext){ this.ext = y; this.extT = now; this.extX = x; }
       else if (y < this.ext - H){
@@ -514,7 +568,7 @@ function onBeat(tBeat, drop, skipped, dx, ix = 0, iy = 0){
   if (state.finished || !audioReady || !state.armed) return;
   // 只要手往下揮、再往上彈起來，就算一拍（不看方向、不看大小，只有太接近上一拍的雜訊不算）
   const M = meter(), period = 60000/state.bpm, gap = tBeat - state.lastBeat;
-  if (state.playing && gap < period*.45) return;                 // 連半拍都不到就又一下：是同一拍的反彈，不算
+  if (state.playing && gap < period*TUNE.bounce) return;                 // 連半拍都不到就又一下：是同一拍的反彈，不算
   state.prepDrops = (state.prepDrops || []).filter(p => tBeat - p.t < 3000); state.prepDrops.push({t:tBeat, drop});
   // 第一拍：一小節裡往下最大的那一拍（只看大小）
   const isDown = drop >= state.bigDrop*.85;
@@ -552,8 +606,8 @@ function onBeat(tBeat, drop, skipped, dx, ix = 0, iy = 0){
   const amp = drop * pa[1] / pa[bp];
   pa[bp] += (drop - pa[bp]) * .25;
   const k = state.playing ? .65 : 1;                      // 新的一拍佔 65%，一兩拍內就跟上，又不會一拍一拍跳
-  if (state.single >= 0) setLevel(state.single, state.levels[state.single] + (map(amp, .015, .22, .15, 1.8) - state.levels[state.single])*k);
-  else state.master += (map(amp, .015, .22, .35, 1.25) - state.master)*k;     // 揮得再小也聽得到，只是很小聲
+  if (state.single >= 0) setLevel(state.single, state.levels[state.single] + (map(amp, TUNE.ampLow, TUNE.ampHigh, .15, 1.8) - state.levels[state.single])*k);
+  else state.master += (map(amp, TUNE.ampLow, TUNE.ampHigh, .35, 1.25) - state.master)*k;     // 揮得再小也聽得到，只是很小聲
   if (!state.playing){
     drawBarDots();
     if (target && state.prepCount >= M && state.barBeat === M){   // 空揮滿一小節（揮到最後一拍）：樂團從下一小節的第一拍進來
@@ -785,6 +839,16 @@ function buildTimpani(f, m, size){
   f.topY = 1.05 * size;
 }
 
+let _glowTex = null;
+function glowTexture(){                                     // 中間亮、往外漸漸透明的圓形光斑
+  if (_glowTex) return _glowTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), grad = g.createRadialGradient(64,64,0,64,64,64);
+  grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(.25, 'rgba(255,255,255,.55)');
+  grad.addColorStop(.6, 'rgba(255,255,255,.14)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0,0,128,128);
+  return _glowTex = new THREE.CanvasTexture(c);
+}
 function makeFigure(sec, idx, kind){
   const root = new THREE.Group(), inner = new THREE.Group(); root.add(inner);
   const f = {root, inner, kind, phase:Math.random()*6, bow:0, hitL:0, hitR:0, slideZ:0, baseTilt:0};
@@ -801,11 +865,17 @@ function makeFigure(sec, idx, kind){
   // 地上一圈這組顏色的光暈：看得出是哪一組，選中時會變亮
   const halo = mesh(new THREE.CircleGeometry(kind === 'timpani' ? 1.6 : ['flute','clarinet','trumpet','horn','trombone'].includes(kind) ? .5 : .36, 32), new THREE.MeshBasicMaterial({color:sec.color, transparent:true, opacity:.2, depthWrite:false}));
   halo.rotation.x = -PI/2; halo.position.y = .005; root.add(halo); sec.halos.push(halo);
+  // 發光：一團柔和的光暈貼在樂器上，演奏時亮起來（用疊加的方式，顏色會越疊越亮）
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(), color:sec.color, transparent:true, opacity:0, blending:THREE.CustomBlending, blendEquation:THREE.AddEquation, blendSrc:THREE.SrcAlphaFactor, blendDst:THREE.OneFactor, blendSrcAlpha:THREE.ZeroFactor, blendDstAlpha:THREE.OneFactor, depthWrite:false, depthTest:false}));
+  const gs = Math.max(1.3, f.topY*1.7) * (kind === 'timpani' ? 1.5 : 1);
+  glow.scale.set(gs, gs, 1); glow.position.y = f.topY*.5; root.add(glow); sec.glows.push(glow);
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture(), color:0xfff4d6, transparent:true, opacity:0, blending:THREE.CustomBlending, blendEquation:THREE.AddEquation, blendSrc:THREE.SrcAlphaFactor, blendDst:THREE.OneFactor, blendSrcAlpha:THREE.ZeroFactor, blendDstAlpha:THREE.OneFactor, depthWrite:false, depthTest:false}));
+  core.scale.set(gs*.45, gs*.45, 1); core.position.y = f.topY*.5; root.add(core); sec.cores.push(core);
   f.head = new THREE.Object3D(); f.head.position.y = f.topY; root.add(f.head);   // 名稱標籤和選取範圍用的「頂端」
   return f;
 }
 SECTIONS.forEach((sec,i) => {
-  sec.mats = sectionMats(); sec.halos = [];
+  sec.mats = sectionMats(); sec.halos = []; sec.glows = []; sec.cores = [];
   sec.figs = [];
   sec.rows.forEach((row,r) => {
     row.figs = row.kinds.map((kind,k) => { const f = makeFigure(sec, i*5+r*3+k, kind); scene.add(f.root); sec.figs.push(f); return f; });
@@ -851,6 +921,9 @@ function animateOrchestra(dt){
     const sel = state.selected === i, glow = sel ? .28 : S.act*.12*amt;
     for (const m of sec.mats.list) m.emissive.set(sec.color).multiplyScalar(glow);   // 正在演奏或被選中時發亮
     for (const h of sec.halos) h.material.opacity = sel ? .6 : .15 + .3*S.act*amt;
+    const g = clamp((sel ? .3 : 0) + S.act*.6*amt, 0, .9) * TUNE.glow;   // 演奏的音越大聲、越亮；被選中的那組常亮
+    for (const sp of sec.glows) sp.material.opacity = g;
+    for (const sp of sec.cores) sp.material.opacity = S.act*.35*amt*TUNE.glow;
     for (const f of sec.figs){
       f.inner.rotation.z = f.baseTilt + Math.sin(beat*PI + f.phase)*.025*amt;   // 跟著拍子輕輕搖
       f.inner.position.y = S.act*.035*amt;                                        // 發出聲音時微微彈起
@@ -1207,9 +1280,8 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
 async function begin(input){
   $('btnCam').disabled = true;
   try {
-    if (!audioReady){ $('msg').textContent = '正在準備樂團……'; await setupAudio(); }
+    if (!audioReady){ $('msg').textContent = '正在載入真實樂器的聲音，第一次大約要 10～30 秒……'; await setupAudio(); }
     if (input === 'camera' && !landmarker){ $('msg').textContent = '正在開啟鏡頭和載入辨識，第一次大約要幾秒鐘……'; await startCamera(); }
-    state.camLatMs = 70;
     state.input = input;
     $('cam').style.display = input === 'camera' ? 'block' : 'none';
     $('tools').style.display = input === 'camera' ? 'flex' : 'none';
@@ -1217,6 +1289,7 @@ async function begin(input){
     $('help').textContent = '雙手照拍子圖形一起揮　揮大聲音大　左手比左上角列出的手勢可單獨控制　雙手握拳停住收音';
     $('start').style.display = 'none'; $('msg').textContent = '';
     loadSong();
+    if (soundReport){ setStatus(soundReport); soundReport = ''; }
   } catch (err){
     console.error(err);
     $('msg').textContent = `沒辦法開啟鏡頭（${err.name || err.message}）。請確認瀏覽器已允許使用鏡頭，再重新整理頁面試一次。`;
@@ -1225,6 +1298,47 @@ async function begin(input){
 }
 $('btnCam').onclick = () => begin('camera');
 $('swap').onclick = () => { state.swapHands = !state.swapHands; track.R = track.L = null; };
+
+/* ---------- 調整面板：一邊揮一邊拉滑桿，調到順手 ---------- */
+let gui = null;
+function buildTunePanel(){
+  if (!window.lil){ setStatus('調整面板沒有載入成功（需要網路），請重新整理頁面再試'); return null; }
+  const holder = document.createElement('div');           // 自己準備一個放面板的框，固定在右上角
+  holder.style.cssText = 'position:fixed;right:16px;top:16px;z-index:5;max-height:calc(100vh - 180px);overflow:auto;border-radius:8px';
+  document.body.appendChild(holder);
+  const g = new lil.GUI({title:'調整面板', width:330, container:holder});
+  const add = (folder, key, min, max, step, name) => folder.add(TUNE, key, min, max, step).name(name).onChange(saveTune);
+  const f1 = g.addFolder('拍子偵測');
+  add(f1, 'camLat', 0, 250, 5, '鏡頭延遲補償（毫秒）｜音樂比手慢就調大');
+  add(f1, 'minDrop', .008, .05, .001, '最小揮動幅度｜越小越靈敏');
+  add(f1, 'turn', .005, .03, .001, '往上彈多少才算一拍｜越小越靈敏');
+  add(f1, 'bounce', .3, .7, .01, '多近的兩下當成同一拍｜越大越不會多算');
+  const f2 = g.addFolder('音樂跟手的程度');
+  add(f2, 'alpha', .2, .9, .05, '拍點跟手｜越大越緊跟');
+  add(f2, 'beta', .05, .5, .01, '速度跟手｜越大變速越快');
+  add(f2, 'maxStep', 3, 20, 1, '每拍最多變速（%）');
+  const f3 = g.addFolder('大小聲');
+  add(f3, 'ampLow', .005, .05, .001, '揮多小算最小聲');
+  add(f3, 'ampHigh', .1, .4, .01, '揮多大算最大聲');
+  f3.add(TUNE, 'volume', -20, 6, 1).name('總音量（分貝）').onChange(v => { Tone.Destination.volume.value = v; saveTune(); });
+  const f4 = g.addFolder('畫面');
+  add(f4, 'glow', 0, 2, .05, '發光強度');
+  const actions = {
+    reset(){ Object.assign(TUNE, TUNE_DEFAULT); saveTune(); Tone.Destination.volume.value = TUNE.volume; g.controllersRecursive().forEach(c => c.updateDisplay()); },
+    copy(){
+      const text = '指揮台設定：' + JSON.stringify(TUNE);
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(
+        () => setStatus('設定已複製，可以貼給 Claude'), () => { prompt('請複製下面這行設定：', text); });
+    },
+  };
+  g.add(actions, 'reset').name('恢復預設值');
+  g.add(actions, 'copy').name('複製目前設定（可以貼給 Claude）');
+  return g;
+}
+$('tuneBtn').onclick = () => {
+  if (!gui){ gui = buildTunePanel(); return; }
+  gui._hidden ? gui.show() : gui.hide();
+};
 $('again').onclick = () => loadSong();
 $('menu').onclick = () => {
   state.playing = false; stopScheduler(); if (master) master.gain.rampTo(0, .2);
