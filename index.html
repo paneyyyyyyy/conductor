@@ -1328,11 +1328,11 @@ function buildTunePanel(){
     copy(){
       const text = '指揮台設定：' + JSON.stringify(TUNE);
       (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(
-        () => setStatus('設定已複製'), () => { prompt('請複製下面這行設定：', text); });
+        () => setStatus('設定已複製，可以貼給 Claude'), () => { prompt('請複製下面這行設定：', text); });
     },
   };
   g.add(actions, 'reset').name('恢復預設值');
-  g.add(actions, 'copy').name('複製目前設定');
+  g.add(actions, 'copy').name('複製目前設定（可以貼給 Claude）');
   return g;
 }
 $('tuneBtn').onclick = () => {
@@ -1351,7 +1351,7 @@ $('toMenu').onclick = $('menu').onclick;
 try {
   const lastStep = localStorage.getItem(MARK_KEY);
   if (lastStep && lastStep !== 'closed' && lastStep !== 'menu')
-    $('msg').textContent = `「${STEP_NAME[lastStep] || lastStep}」。`;
+    $('msg').textContent = `上次卡住時，程式正在「${STEP_NAME[lastStep] || lastStep}」。請把這句話告訴 Claude。`;
 } catch {}
 mark('menu');
 addEventListener('pagehide', () => mark('closed'));
